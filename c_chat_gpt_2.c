@@ -181,7 +181,13 @@ Matrix read_matrix(int rows, int cols) {
 
   // It's already stored as a float on disk. Just load the bytes.
   // (This assumes your machine is little endian)
-  fread(a.dat, tmp, 1, fp); 
+  size_t result = fread(a.dat, tmp, 1, fp);
+  if (result != 1) {
+      // Handle error, e.g., print an error message and exit
+      perror("Error reading matrix");
+      exit(EXIT_FAILURE);
+  }
+
 
   // Our matrix multiply assumes transposed weights.
   return transpose(a);
@@ -274,7 +280,13 @@ int main(int tmp, char** argv) {
 	  bpe[k+1] = 0;
 	} else if (i > 254) {
 	  // Ones above 254 are from the BPE file. Load those
-	  fscanf(fp, "%s %s", a, b);
+	  int fscanf_result = fscanf(fp, "%s %s", a, b);
+    if (fscanf_result != 2) {
+        // Handle error, e.g., print an error message and exit
+        perror("Error reading BPE");
+        exit(EXIT_FAILURE);
+    }
+
 	  strcat((char*)a, (char*)b);
 	  int j = 0;
 	  LOOP(i, a[i]) {
@@ -335,130 +347,134 @@ int main(int tmp, char** argv) {
   /////////////////////////////////////////////////////////////
 
   while (1) {
-	char buf[1000] = {0};
-	int T;
-	strcat(buf, "\nAlice: ");
-	printf("\n%s: ", bpe+20490*999);
-	fflush(stdout);
-	
-	fgets(buf+8, 1000, stdin);
-	printf("AI:");
+    char buf[1000] = {0};
+    int T;
+    strcat(buf, "\nAlice: ");
+    printf("\n%s: ", bpe+20490*999);
+    fflush(stdout);
+    
+    char *fgets_result = fgets(buf + 8, 992, stdin);
+    if (fgets_result == NULL) {
+        // Handle error, e.g., print an error message and exit
+        perror("Error reading input");
+        exit(EXIT_FAILURE);
+    }
 
-	strcat(buf, "\nBob:");
-	num_total_tokens = tokenize(buf, history_tokens+num_total_tokens)-history_tokens;
-  
-	memory_top = memory;
+    printf("AI:");
 
-	token_processed_upto = 0;
+    strcat(buf, "\nBob:");
+    num_total_tokens = tokenize(buf, history_tokens+num_total_tokens)-history_tokens;
+    
+    memory_top = memory;
 
-	// Loop forever in conversation, to iterate between the human and ml model
-	while (1) {
-	  // Reset the memory to the top of the original value
-	  memory = memory_top;
+    token_processed_upto = 0;
 
-	  // Compute the context window size as the next largest multiple of 32
-	  T = num_total_tokens + 32 - num_total_tokens%32;
-	  // If the number is 0 mod 32, then we need to recompute everything bottom up
-	  token_processed_upto *= !!(num_total_tokens%32);
-	  
-	  // This is the line we're going to process.
-	  Matrix line = NewMatrix(T, DIM, 1);
+    // Loop forever in conversation, to iterate between the human and ml model
+    while (1) {
+      // Reset the memory to the top of the original value
+      memory = memory_top;
 
-	  // Start by loading the embedding weights and adding the position encoding.
-	  LOOP(i, num_total_tokens) {
-		LOOP(j, DIM) {
-		  line.dat[i*DIM+j] = wte.dat[history_tokens[i]*DIM + j] + wpe.dat[j*1024+i];
-		}
-	  }
+      // Compute the context window size as the next largest multiple of 32
+      T = num_total_tokens + 32 - num_total_tokens%32;
+      // If the number is 0 mod 32, then we need to recompute everything bottom up
+      token_processed_upto *= !!(num_total_tokens%32);
+      
+      // This is the line we're going to process.
+      Matrix line = NewMatrix(T, DIM, 1);
 
-	  // Start the transformer neural network inference.
-	  LOOP(i, NLAYER) {
+      // Start by loading the embedding weights and adding the position encoding.
+      LOOP(i, num_total_tokens) {
+      LOOP(j, DIM) {
+        line.dat[i*DIM+j] = wte.dat[history_tokens[i]*DIM + j] + wpe.dat[j*1024+i];
+      }
+      }
 
-		// The layers on disk are stored by sorting alphabetically,
-		// because tensorflow makes no sense. We need to convert this to
-		// the correct order. For example, if there are 12 layers, we would
-		// have them on disk in order: 0 1 10 11 2 3 4 5 6 7 8 9
-		// which means we permute by the inverse: 0 1 4 5 6 7 8 9 10 11 2 3
-		int permute;
-		tmp=0;
-		LOOP(j, 10) {
-		  if (j == i) {
-			permute = tmp;
-		  }
-		  tmp++;
-		  LOOP(k, 10*(j>0)) {
-			if (j*10+k < NLAYER && tmp++ && i == j*10+k) {
-			  permute = tmp;
-			}
-		  }
-		}
+      // Start the transformer neural network inference.
+      LOOP(i, NLAYER) {
 
-		// This layer's weights are at this offset
-		layer_weights = weights + 12*permute;
+      // The layers on disk are stored by sorting alphabetically,
+      // because tensorflow makes no sense. We need to convert this to
+      // the correct order. For example, if there are 12 layers, we would
+      // have them on disk in order: 0 1 10 11 2 3 4 5 6 7 8 9
+      // which means we permute by the inverse: 0 1 4 5 6 7 8 9 10 11 2 3
+      int permute;
+      tmp=0;
+      LOOP(j, 10) {
+        if (j == i) {
+        permute = tmp;
+        }
+        tmp++;
+        LOOP(k, 10*(j>0)) {
+        if (j*10+k < NLAYER && tmp++ && i == j*10+k) {
+          permute = tmp;
+        }
+        }
+      }
 
-		// Compute the keys, queries, and values all at once with a big multiply
-		Matrix qkv = transpose(slice(Linear(LayerNorm(line, 4), 0), 0, T*3, DIM));
+      // This layer's weights are at this offset
+      layer_weights = weights + 12*permute;
 
-		// Make space for the output of the computation
-		Matrix result = NewMatrix(DIM, T, 1);
+      // Compute the keys, queries, and values all at once with a big multiply
+      Matrix qkv = transpose(slice(Linear(LayerNorm(line, 4), 0), 0, T*3, DIM));
 
-		LOOP(k, NHEAD) {
-		  // Split the qkv into each of the heads
-		  Matrix merge = transpose(slice(qkv, k*3, 64*T, 3)),
-			// perform the product of the queries and keys and then exponentiate
-			a = tril(matmul_t_fast(transpose(slice(merge, 0, 64, T)),
-								   transpose(slice(merge, T, 64, T))), T),
-			// finally multiply the softmax output (a/sum(a)) with the values matrix
-			out = transpose(matmul_t_fast(divide(a, sum(a)), slice(merge, T*2, 64, T)));
-		  // and copy the output to the proper location in the result matrix
-		  memcpy(result.dat+64*T*k, out.dat, 64*T*4);
-		}
+      // Make space for the output of the computation
+      Matrix result = NewMatrix(DIM, T, 1);
 
-		// Residual connection
-		line = add(line,Linear(transpose(result), 2));
+      LOOP(k, NHEAD) {
+        // Split the qkv into each of the heads
+        Matrix merge = transpose(slice(qkv, k*3, 64*T, 3)),
+        // perform the product of the queries and keys and then exponentiate
+        a = tril(matmul_t_fast(transpose(slice(merge, 0, 64, T)),
+                    transpose(slice(merge, T, 64, T))), T),
+        // finally multiply the softmax output (a/sum(a)) with the values matrix
+        out = transpose(matmul_t_fast(divide(a, sum(a)), slice(merge, T*2, 64, T)));
+        // and copy the output to the proper location in the result matrix
+        memcpy(result.dat+64*T*k, out.dat, 64*T*4);
+      }
 
-		// Activation function and residual connection
-		line = add(line, Linear(GELU(Linear(LayerNorm(line, 6), 8), 0), 10));
-	  }
+      // Residual connection
+      line = add(line,Linear(transpose(result), 2));
 
-	  // Reset layer weights so we can do the last layer norm
-	  layer_weights = weights;
-	  line = LayerNorm(line, 12*NLAYER);
+      // Activation function and residual connection
+      line = add(line, Linear(GELU(Linear(LayerNorm(line, 6), 8), 0), 10));
+      }
 
-	  // And finally compute the output logits
-	  token_processed_upto = 0;
-	  int tmp = num_total_tokens;
-	  num_total_tokens = 1;
-	  Matrix result = matmul_t_fast(transpose(slice(line, tmp-1, DIM, 1)), wte);
-	  token_processed_upto = num_total_tokens = tmp;
+      // Reset layer weights so we can do the last layer norm
+      layer_weights = weights;
+      line = LayerNorm(line, 12*NLAYER);
 
-	  // Get the arg-max token
-	  tmp = 0;
-	  LOOP(i, 5e4) {
-		if (result.dat[i] > result.dat[tmp]) {
-		  tmp = i;
-		}
-	  }
+      // And finally compute the output logits
+      token_processed_upto = 0;
+      int tmp = num_total_tokens;
+      num_total_tokens = 1;
+      Matrix result = matmul_t_fast(transpose(slice(line, tmp-1, DIM, 1)), wte);
+      token_processed_upto = num_total_tokens = tmp;
 
-	  // If the history is too long, then purge by half
-	  if (num_total_tokens == zz) {
-		memcpy(history_tokens, history_tokens+zz/2, tmp*2);
-		num_total_tokens -= zz/2;
-		token_processed_upto = 0;
-	  }
-	  // Write it to the history buffer
-	  history_tokens[num_total_tokens++] = tmp;
+      // Get the arg-max token
+      tmp = 0;
+      LOOP(i, 5e4) {
+      if (result.dat[i] > result.dat[tmp]) {
+        tmp = i;
+      }
+      }
 
-	  // If it's a newline this is the end of the converstaion
-	  if (bpe[tmp*999] == 10) {
-		break;
-	  }
+      // If the history is too long, then purge by half
+      if (num_total_tokens == zz) {
+        memcpy(history_tokens, history_tokens+zz/2, tmp*2);
+        num_total_tokens -= zz/2;
+        token_processed_upto = 0;
+      }
+      // Write it to the history buffer
+      history_tokens[num_total_tokens++] = tmp;
 
-	  // Otherwise print it and keep generating along
-	  printf("%s", bpe+tmp*999);
-	  fflush(stdout);
-	}
+      // If it's a newline this is the end of the converstaion
+      if (bpe[tmp*999] == 10) {
+        break;
+      }
 
+      // Otherwise print it and keep generating along
+      printf("%s", bpe+tmp*999);
+      fflush(stdout);
+    }
   }
-
 }
