@@ -18,11 +18,7 @@
 #include<stdlib.h>
 #include<string.h>
 #include<math.h>
-
-#ifdef GOFAST
-#include<omp.h>
-#endif
-
+#include "matmul_cuda.h"
 
 int DIM, NLAYER, NHEAD;
 
@@ -122,30 +118,39 @@ Matrix transpose(Matrix a) {
 // 3. If the fast flag is defined, we use OMP to parallelize across threads
 // 4. We re-use computation from prior runs, and only fill in the
 //    *new* rows that weren't populated the prior run through the model
+// Matrix matmul_t_fast(Matrix a, Matrix b) {
+//   Matrix out = NewMatrix(a.rows, b.rows, !token_processed_upto);
+
+//   #ifdef GOFAST
+//   #pragma omp parallel
+//   #endif
+//   {
+//   for (int i = token_processed_upto; i < num_total_tokens; i++) {
+// 	#ifdef GOFAST
+// 	#pragma omp for
+// 	#endif
+//     for (int j = 0; j < b.rows; j += 4) {
+// 	  for (int k = 0; k < a.cols; k += 4) {
+// 		  LOOP(k2,4)
+// 			LOOP(j2,4)
+// 			  out.dat[i * b.rows + j+j2] += a.dat[i * a.cols + k+k2] * b.dat[(j+j2) * b.cols + k+k2];
+
+// 	  }
+//     }
+//   }
+//   }
+
+//   // Clone the matrix so that we don't clobber our prior computation
+//   return add(NewMatrix(out.rows, out.cols, 1), out);
+// }
+
 Matrix matmul_t_fast(Matrix a, Matrix b) {
   Matrix out = NewMatrix(a.rows, b.rows, !token_processed_upto);
 
-  #ifdef GOFAST
-  #pragma omp parallel
-  #endif
-  {
-  for (int i = token_processed_upto; i < num_total_tokens; i++) {
-	#ifdef GOFAST
-	#pragma omp for
-	#endif
-    for (int j = 0; j < b.rows; j += 4) {
-	  for (int k = 0; k < a.cols; k += 4) {
-		  LOOP(k2,4)
-			LOOP(j2,4)
-			  out.dat[i * b.rows + j+j2] += a.dat[i * a.cols + k+k2] * b.dat[(j+j2) * b.cols + k+k2];
+  // Use the CUDA matrix multiplication function
+  matMulCUDA(a.dat, a.rows, a.cols, b.dat, b.rows, b.cols, out.dat);
 
-	  }
-    }
-  }
-  }
-
-  // Clone the matrix so that we don't clobber our prior computation
-  return add(NewMatrix(out.rows, out.cols, 1), out);
+  return out;
 }
 
 // Take a slice out of a larger matrix and return a new matrix with the given shape
