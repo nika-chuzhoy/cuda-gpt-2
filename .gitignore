@@ -1,6 +1,3 @@
-**/gpt2-124M.ckpt
-**/a.out
+**/gpt2-*M.ckpt
 **/vocab.bpe
-**.o
-**/c_chat_gpt_2
-**/optimized_chat_gpt_2
+bin
