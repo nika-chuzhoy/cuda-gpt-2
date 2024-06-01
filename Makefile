@@ -10,18 +10,17 @@ GPU_OBJ = bin/cuda_utils.o
 GPU_BIN = bin/optimized_chat_gpt_2
 
 # Common variables
-PROMPT = "\nAlice: Hello, how are you doing today?\nBob: I am doing well. I am a language model trained by OpenAI. How can I assist you?\nAlice: Can you answer my questions?\nBob: Yes I will answer your questions. What do you want to know?\nAlice: What is your name?\nBob: My name is Bob.\nAlice: Nice to meet you Bob. I'm alice.\nBob: How can I help you?"
 SEQ_LEN = 512
 
 # Targets
 cpu: clean
 	gcc -O3 $(CPU_SRC) -lm -o $(CPU_BIN)
-	./bin/c_chat_gpt_2 gpt2-124M.ckpt vocab.bpe "$(echo -e "\nAlice: Hello, how are you doing today?\nBob: I am doing well. I am a language model trained by OpenAI. How can I assist you?\nAlice: Can you answer my questions?\nBob: Yes I will answer your questions. What do you want to know?\nAlice: What is your name?\nBob: My name is Bob.\nAlice: Nice to meet you Bob. I'm alice.\nBob: How can I help you?")" 512
+	./bin/c_chat_gpt_2 gpt2-124M.ckpt vocab.bpe "$$(echo -e "\nAlice: Hello, how are you doing today?\nBob: I am doing well. I am a language model trained by OpenAI. How can I assist you?\nAlice: Can you answer my questions?\nBob: Yes I will answer your questions. What do you want to know?\nAlice: What is your name?\nBob: My name is Bob.\nAlice: Nice to meet you Bob. I'm alice.\nBob: How can I help you?")" 512
 
 gpu: clean
 	nvcc -c $(GPU_SRC_CU) -o $(GPU_OBJ)
 	gcc -O3 $(GPU_SRC_C) $(GPU_OBJ) -o $(GPU_BIN) -L/usr/local/cuda/lib64 -lcudart -lm -lstdc++
-	./bin/optimized_chat_gpt_2 gpt2-124M.ckpt vocab.bpe "$(echo -e "\nAlice: Hello, how are you doing today?\nBob: I am doing well. I am a language model trained by OpenAI. How can I assist you?\nAlice: Can you answer my questions?\nBob: Yes I will answer your questions. What do you want to know?\nAlice: What is your name?\nBob: My name is Bob.\nAlice: Nice to meet you Bob. I'm alice.\nBob: How can I help you?")" 512
+	./bin/optimized_chat_gpt_2 gpt2-124M.ckpt vocab.bpe "$$(echo -e "\nAlice: Hello, how are you doing today?\nBob: I am doing well. I am a language model trained by OpenAI. How can I assist you?\nAlice: Can you answer my questions?\nBob: Yes I will answer your questions. What do you want to know?\nAlice: What is your name?\nBob: My name is Bob.\nAlice: Nice to meet you Bob. I'm alice.\nBob: How can I help you?")" 512
 
 download:
 	curl -o vocab.bpe https://openaipublic.blob.core.windows.net/gpt-2/models/124M/vocab.bpe
