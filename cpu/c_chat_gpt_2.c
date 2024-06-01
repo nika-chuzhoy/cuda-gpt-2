@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 int DIM, NLAYER, NHEAD;
 
@@ -240,7 +241,6 @@ int* tokenize(char* seq, /*INT*/ int* result) {
     return result;
 }
 
-
 // void softmax(float* input, float* output, int size) {
 //     // Step 1: Find the maximum value in the input array
 //     float max = input[0];
@@ -263,9 +263,12 @@ int* tokenize(char* seq, /*INT*/ int* result) {
 //     }
 // }
 
-
 // Now for the main function that does most of the useful work.
 int main(int tmp, char** argv) {
+    clock_t start, end;
+    double cpu_time_used;
+    start = clock();
+
     // Initially let's figure out the right hyperparameters for this model
     // argv[1] stores the name of the model we're loading
     // tmp will map 124M -> 0, 355M -> 1, 775M -> 2, 1558M -> 3
@@ -341,14 +344,17 @@ int main(int tmp, char** argv) {
     Matrix wpe = read_matrix(1024, DIM),
         wte = transpose(read_matrix(5e4, DIM));
 
+    end = clock();
+    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+    printf("\n---- Seconds to load: %f ----\t\n", cpu_time_used);
+
     /////////////////////////////////////////////////////////////
     ///////////////INFERENCE FUNCTION INLINED////////////////////
     /////////////////////////////////////////////////////////////
 
-    // Print out the prompt
-    printf("AI: Please enter your prompt.");
-
     while (1) {
+        start = clock();
+
         char buf[1000] = {0};
         int T;
         printf("\nHuman: ");
@@ -456,7 +462,7 @@ int main(int tmp, char** argv) {
 
             // Get the arg-max token
             int size = 5e4;
-            float temperature = 0.6;
+            float temperature = 0.7;
             float* logits = divide_const(result, temperature).dat;
             double max = logits[0];
             for (int i = 1; i < size; i++) {
@@ -502,7 +508,10 @@ int main(int tmp, char** argv) {
             output[num_total_tokens++] = tmp;
 
             // If it's a newline this is the end of the converstaion
-            if (bpe[tmp * 999] == '\n') {
+            if (bpe[tmp * 999] == 10) {
+                end = clock();
+                cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+                printf("\n\n----Seconds to respond: %f----\n", cpu_time_used);
                 break;
             }
 
