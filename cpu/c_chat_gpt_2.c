@@ -241,28 +241,6 @@ int* tokenize(char* seq, /*INT*/ int* result) {
     return result;
 }
 
-// void softmax(float* input, float* output, int size) {
-//     // Step 1: Find the maximum value in the input array
-//     float max = input[0];
-//     for (int i = 1; i < size; i++) {
-//         if (input[i] > max) {
-//             max = input[i];
-//         }
-//     }
-
-//     // Step 2: Compute the exponential of each element minus the max value and sum them up
-//     float sum = 0.0;
-//     for (int i = 0; i < size; i++) {
-//         output[i] = exp(input[i] - max);
-//         sum += output[i];
-//     }
-
-//     // Step 3: Normalize each element by dividing by the sum of exponentials
-//     for (int i = 0; i < size; i++) {
-//         output[i] /= sum;
-//     }
-// }
-
 // Now for the main function that does most of the useful work.
 int main(int tmp, char** argv) {
     clock_t start, end;
