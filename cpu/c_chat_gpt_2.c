@@ -438,7 +438,7 @@ int main(int tmp, char** argv) {
             Matrix result = matmul_t_fast(transpose(slice(line, tmp - 1, DIM, 1)), wte);
             token_processed_upto = num_total_tokens = tmp;
 
-            // Get the arg-max token
+            // Calculate softmax probabilities
             int size = 5e4;
             float temperature = 0.7;
             float* logits = divide_const(result, temperature).dat;
@@ -459,7 +459,8 @@ int main(int tmp, char** argv) {
             for (int i = 0; i < size; i++) {
                 probs[i] /= sum;
             }
-
+            
+            // Weighted random sampling
             tmp = 0;
             float cumulative[size];
             cumulative[0] = probs[0];
