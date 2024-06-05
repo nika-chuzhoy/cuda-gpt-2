@@ -7,6 +7,8 @@ extern "C" {
 
 void matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out);
 
+void matMulCublas(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out);
+
 #ifdef __cplusplus
 }
 #endif

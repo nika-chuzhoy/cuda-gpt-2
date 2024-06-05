@@ -20,7 +20,7 @@ cpu: bin
 
 gpu: bin
 	nvcc -c $(GPU_SRC_CU) -o $(GPU_OBJ)
-	gcc -O3 $(GPU_SRC_C) $(GPU_OBJ) -o $(GPU_BIN) -L/usr/local/cuda/lib64 -lcudart -lm -lstdc++
+	gcc -O3 $(GPU_SRC_C) $(GPU_OBJ) -o $(GPU_BIN) -L/usr/local/cuda/lib64 -lcudart -lm -lstdc++ -lcublas
 	./bin/optimized_chat_gpt_2 gpt2-124M.ckpt vocab.bpe $(SEQ_LEN)
 
 download:

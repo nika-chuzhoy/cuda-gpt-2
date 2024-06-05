@@ -89,6 +89,7 @@ UNARY(GELU, b / 2 * (1 + tanh(.7978845 * (b + .044715 * b * b * b))))
 BINARY(add, +)       // add two matrices together
 BINARY(multiply, *)  // multiply two matrices together
 BINARY(divide, /)    // divide the first matrix by the second
+BINARY(subtract, -)
 
 // We also have some ugly hacks here to implement "tiling"
 // that lets us add or multiply one matrix by the first column of a second
@@ -129,11 +130,20 @@ Matrix transpose(Matrix a) {
 // 3. If the fast flag is defined, we use OMP to parallelize across threads
 // 4. We re-use computation from prior runs, and only fill in the
 //    *new* rows that weren't populated the prior run through the model
+void printMatrix(Matrix m) {
+    for (int i = 0; i < m.rows; i++) {
+        for (int j = 0; j < m.cols; j++) {
+            printf("%f ", m.dat[i * m.cols + j]);
+        }
+        printf("\n");
+    }
+}
+
 Matrix matmul_t_fast(Matrix a, Matrix b) {
   Matrix out = NewMatrix(a.rows, b.rows, !token_processed_upto);
 
   // Use the CUDA matrix multiplication function
-  matMulCUDA(a.dat, a.rows, a.cols, b.dat, b.rows, b.cols, out.dat);
+  matMulCublas(a.dat, a.rows, a.cols, b.dat, b.rows, b.cols, out2.dat);
 
   return out;
 }
