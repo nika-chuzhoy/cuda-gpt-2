@@ -23,7 +23,7 @@ float* generateRandomMatrix(int rows, int cols) {
     return matrix;
 }
 
-void cpuMatMul(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
+void matMulCPU(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
    for (int i = 0; i < aRows; i++) {
         for (int j = 0; j < bRows; j++) {
             float sum = 0;
@@ -62,7 +62,7 @@ void matMulCUDATest() {
     float *c_output_cpu = (float*) malloc(aRows * bRows * sizeof(float));
 
     matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_gpu);
-    cpuMatMul(a_input, aRows, aCols, b_input, bRows, bCols, c_output_cpu);
+    matMulCPU(a_input, aRows, aCols, b_input, bRows, bCols, c_output_cpu);
 
     // printMatrix(c_output_gpu, aRows, bRows);
     // printMatrix(c_output_cpu, aRows, bRows);
@@ -110,7 +110,7 @@ void matMulCublasTest() {
     free(c_output_cpu);
 }
 
-void cpuTranspose(float *input, float *output, int rows, int cols) {
+void transposeCPU(float *input, float *output, int rows, int cols) {
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
             output[j * rows + i] = input[i * cols + j];
@@ -118,12 +118,12 @@ void cpuTranspose(float *input, float *output, int rows, int cols) {
     }
 }
 
+
 void cudaTransposeTest() {
-    const int rows = 256;
-    const int cols = 256;
+    const int rows = 77;
+    const int cols = 80;
 
     float *h_input = generateRandomMatrix(rows, cols);
-    float *h_output_gpu = (float*) malloc(rows * cols * sizeof(float));
     float *h_output_cpu = (float*) malloc(rows * cols  * sizeof(float));
 
     Matrix mat;
@@ -131,17 +131,19 @@ void cudaTransposeTest() {
     mat.rows = rows;
     mat.cols = cols;
 
-    cudaTranspose(mat);
-    cpuTranspose(h_input, h_output_cpu, rows, cols);
+    transposeCPU(h_input, h_output_cpu, rows, cols);
+    transposeCUDA(mat);
 
-    if (compareMatrices(mat.dat, h_output_cpu, rows, cols)) {
+    // printMatrix(h_output_cpu, cols, rows);
+    // printMatrix(mat.dat, cols, rows);
+
+    if (compareMatrices(mat.dat, h_output_cpu, cols, rows)) {
         std::cout << "Test Transpose PASSED." << std::endl;
     } else {
         std::cout << "Test Transpose FAILED." << std::endl;
     }
 
     free(h_input);
-    free(h_output_gpu);
     free(h_output_cpu);
 }
 
