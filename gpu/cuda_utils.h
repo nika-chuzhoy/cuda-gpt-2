@@ -9,11 +9,6 @@ typedef struct {
     int rows, cols;
 } Matrix;
 
-typedef struct {
-    float* dat;
-    int rows, cols;
-} Matrix;
-
 void matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out);
 
 void matMulCublas(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out);

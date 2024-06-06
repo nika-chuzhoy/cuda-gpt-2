@@ -90,11 +90,6 @@ extern "C" Matrix sliceCublas(Matrix a, int b, int rows, int cols) {
     return out;
 }
 
-typedef struct {
-    float* dat;
-    int rows, cols;
-} Matrix;
-
 // From Lab 2
 __global__
 void transposeKernel(const float *input, float *output, int n) {
