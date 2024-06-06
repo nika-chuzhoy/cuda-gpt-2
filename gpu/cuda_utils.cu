@@ -1,6 +1,7 @@
 #include <cuda_runtime.h>
 #include <iostream>
 #include <cublas_v2.h>
+#include "cuda_utils.h"
 
 // CUDA kernel for matrix multiplication with A and transpose(B)
 __global__ void matMulCudaKernel(float* A, float* B, float* C, int aRows, int aCols, int bRows) {
@@ -80,6 +81,13 @@ extern "C" void matMulCublas(float* a, int aRows, int aCols, float* b, int bRows
     cudaFree(d_B);
     cudaFree(d_C);
     cublasDestroy(handle);
+}
+
+// Take a slice out of a larger matrix and return a new matrix with the given shape
+extern "C" Matrix sliceCublas(Matrix a, int b, int rows, int cols) {
+    // change to devicetodevice later TODO
+    Matrix out = {a.dat + b * rows, rows, cols};
+    return out;
 }
 
 typedef struct {
