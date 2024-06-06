@@ -44,10 +44,26 @@ void matMulCublasTest() {
     }
 }
 
+void sliceCublasTest() {
+    int cRows = 1;
+    int cCols = 1;
+    int b = 0;
+    Matrix C = sliceCublas({A, aRows, aCols}, b, cRows, cCols);
+
+    printf("Sliced Matrix:\n");
+    for (int i = 0; i < cRows; ++i) {
+        for (int j = 0; j < cCols; ++j) {
+            printf("%.2f ", C.dat[i * cCols + j]);
+        }
+        printf("\n");
+    }
+}
+
 int main() {
 
-    matMulCUDATest();
-    matMulCublasTest();
+    //matMulCUDATest();
+    //matMulCublasTest();
+    sliceCublasTest();
 
     return 0;
 }

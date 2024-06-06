@@ -31,11 +31,6 @@ char* bpe;
 void *memory, *memory_top;
 FILE* fp;
 
-typedef struct {
-    float* dat;
-    int rows, cols;
-} Matrix;
-
 Matrix* layer_weights;
 
 // Standard stuff here. Let's save space with all our loops
