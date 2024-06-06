@@ -72,7 +72,7 @@ void matMulCUDATest() {
     cudaEventCreate(&stop_cpu);
     cudaEventRecord(start_cpu);
 
-    cpuMatMul(a_input, aRows, aCols, b_input, bRows, bCols, c_output_cpu);
+    matMulCPU(a_input, aRows, aCols, b_input, bRows, bCols, c_output_cpu);
 
     cudaEventRecord(stop_cpu);
     cudaEventSynchronize(stop_cpu);
