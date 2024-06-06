@@ -268,7 +268,7 @@ int main(int tmp, char** argv) {
     // The BPE was not written in a c-friendly format.
     // So we need to do some ugly processing to load it.
     unsigned char a[tmp = 999], b[tmp];
-    LOOP(i, 5e4) {
+    LOOP(i, 5e4) {  // Vansh loop
         int k = i * tmp;
         if (i < 93) {
             // The first 92 tokens are just the printable ascii characters
@@ -326,7 +326,7 @@ int main(int tmp, char** argv) {
     ///////////////INFERENCE FUNCTION INLINED////////////////////
     /////////////////////////////////////////////////////////////
 
-    while (1) {
+    while (1) {  // Nika loop
         start = clock();
 
         char buf[1000] = {0};
@@ -353,7 +353,7 @@ int main(int tmp, char** argv) {
 
         token_processed_upto = 0;
 
-        while (1) {
+        while (1) {  // Brian loop
             // Reset the memory to the top of the original value
             memory = memory_top;
 
@@ -373,7 +373,7 @@ int main(int tmp, char** argv) {
             }
 
             // Start the transformer neural network inference.
-            LOOP(i, NLAYER) {
+            LOOP(i, NLAYER) {  // Lynn loop
                 // The layers on disk are stored by sorting alphabetically,
                 // because tensorflow makes no sense. We need to convert this to
                 // the correct order. For example, if there are 12 layers, we would

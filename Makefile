@@ -9,6 +9,9 @@ GPU_SRC_CU = gpu/cuda_utils.cu
 GPU_OBJ = bin/cuda_utils.o
 GPU_BIN = bin/optimized_chat_gpt_2
 
+TEST_SRC = gpu/test.cpp
+TEST_BIN = bin/test_matmul
+
 SEQ_LEN = 1024
 
 # Targets
@@ -22,6 +25,11 @@ gpu: bin
 	nvcc -c $(GPU_SRC_CU) -o $(GPU_OBJ)
 	gcc -O3 $(GPU_SRC_C) $(GPU_OBJ) -o $(GPU_BIN) -L/usr/local/cuda/lib64 -lcudart -lm -lstdc++ -lcublas
 	./bin/optimized_chat_gpt_2 gpt2-124M.ckpt vocab.bpe $(SEQ_LEN)
+
+test: clean
+	nvcc -c $(GPU_SRC_CU) -o $(GPU_OBJ)
+	gcc -O3 $(TEST_SRC) $(GPU_OBJ) -o $(TEST_BIN) -L/usr/local/cuda/lib64 -lcudart -lcublas -lm -lstdc++
+	./$(TEST_BIN)
 
 download:
 	curl -o vocab.bpe https://openaipublic.blob.core.windows.net/gpt-2/models/124M/vocab.bpe
