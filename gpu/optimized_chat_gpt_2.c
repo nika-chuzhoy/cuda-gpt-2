@@ -143,7 +143,7 @@ Matrix matmul_t_fast(Matrix a, Matrix b) {
   Matrix out = NewMatrix(a.rows, b.rows, !token_processed_upto);
 
   // Use the CUDA matrix multiplication function
-  matMulCublas(a.dat, a.rows, a.cols, b.dat, b.rows, b.cols, out2.dat);
+  matMulCublas(a.dat, a.rows, a.cols, b.dat, b.rows, b.cols, out.dat);
 
   return out;
 }
@@ -199,6 +199,7 @@ int fix(char* out) {
     int result = 1e9;
     int best_i;
     LOOP(i, 5e4) {
+        // if 1st char of the token is not \0 and if 1st part of out matches token
         if (bpe[999 * i] && strncmp(bpe + 999 * i, out, tmp = strlen(bpe + 999 * i)) == 0) {
             int sub_cost = fix(out + tmp) + i + 1e7;
             if (sub_cost < result) {
@@ -346,13 +347,12 @@ int main(int tmp, char** argv) {
 
         printf("AI: ");
         strcat(buf, "\n\n");
-        num_total_tokens = tokenize(buf, output + num_total_tokens) - output;
+        num_total_tokens = tokenize(buf, output) - output;
 
         memory_top = memory;
 
         token_processed_upto = 0;
 
-        // Loop forever in conversation, to iterate between the human and ml model
         while (1) {
             // Reset the memory to the top of the original value
             memory = memory_top;

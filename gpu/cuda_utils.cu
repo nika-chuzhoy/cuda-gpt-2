@@ -62,12 +62,17 @@ extern "C" void matMulCublas(float* a, int aRows, int aCols, float* b, int bRows
     float one = 1.0;
     float zero = 0.0;
 
+    // We WTG C = A * B.T
+    // Cublas stores in column order while C stores in row order
+    // So Cublas interprets A and B as A.T and B.T
+    // Therefore we input B.T * A -> interpreted as B * A.T = C.T
+    // C.T in column major = C in row major, so we have what we want
     cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N,
-                bRows, aRows, aCols,
+                bRows, aRows, aCols, // rows C, cols C, cols op(A)
                 &one,
-                d_B, bCols,
-                d_A, aCols,
-                &zero, d_C, bRows);
+                d_B, bCols, // ld B
+                d_A, aCols, // ld A
+                &zero, d_C, bRows); // ld C
 
     cudaMemcpy(out, d_C, sizeC, cudaMemcpyDeviceToHost);
 
