@@ -9,9 +9,9 @@ typedef struct {
     int rows, cols;
 } Matrix;
 
-void matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out);
+float matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out);
 
-void matMulCublas(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out);
+float matMulCublas(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out);
 
 void cudaTranspose(Matrix a);
 
