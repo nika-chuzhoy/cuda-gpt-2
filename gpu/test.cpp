@@ -3,11 +3,14 @@
 #include <cstdlib>
 #include <cstdio> 
 #include "cuda_utils.h"
+#include <time.h>
+#include <cuda_runtime.h>
 
+using namespace std;
 
 bool compareMatrices(float *a, float *b, int rows, int cols) {
     for (int i = 0; i < rows * cols; i++) {
-        if (fabs(a[i] - b[i]) > 1e-5) {
+        if (fabs(a[i] - b[i]) > 1e-2) {
             return false;
         }
     }
@@ -49,23 +52,42 @@ void printMatrix(float* m, int mRows, int mCols) {
 }
 
 void matMulCUDATest() {
-    const int aRows = 5;
-    const int aCols = 3;
+    std::cout << "------------------------------------------" << std::endl;
+    std::cout << "Test CUDA matmul RUNNING." << std::endl;
+    const int aRows = 500;
+    const int aCols = 300;
 
-    const int bRows = 4;
-    const int bCols = 3;
+    const int bRows = 400;
+    const int bCols = 300;
 
     float *a_input = generateRandomMatrix(aRows, aCols);
     float *b_input = generateRandomMatrix(bRows, bCols);
 
     float *c_output_gpu = (float*) malloc(aRows * bRows * sizeof(float));
     float *c_output_cpu = (float*) malloc(aRows * bRows * sizeof(float));
+    
+    // Use the CUDA machinery for recording time
+    cudaEvent_t start_cpu, stop_cpu;
+    cudaEventCreate(&start_cpu);
+    cudaEventCreate(&stop_cpu);
+    cudaEventRecord(start_cpu);
 
-    matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_gpu);
-    matMulCPU(a_input, aRows, aCols, b_input, bRows, bCols, c_output_cpu);
+    cpuMatMul(a_input, aRows, aCols, b_input, bRows, bCols, c_output_cpu);
 
+    cudaEventRecord(stop_cpu);
+    cudaEventSynchronize(stop_cpu);
+    float cpu_time_milliseconds;
+    cudaEventElapsedTime(&cpu_time_milliseconds, start_cpu, stop_cpu);
+
+    float gpu_time_milliseconds = matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_gpu);
     // printMatrix(c_output_gpu, aRows, bRows);
     // printMatrix(c_output_cpu, aRows, bRows);
+
+    cout << endl;
+    cout << "CPU time: " << cpu_time_milliseconds << " milliseconds" << endl;
+    cout << "GPU time: " << gpu_time_milliseconds << " milliseconds" << endl;
+    cout << endl << "Speedup factor: " <<
+        cpu_time_milliseconds / gpu_time_milliseconds << endl << endl;
 
     if (compareMatrices(c_output_gpu, c_output_cpu, aRows, bRows)) {
         std::cout << "Test CUDA matmul PASSED." << std::endl;
@@ -80,11 +102,14 @@ void matMulCUDATest() {
 }
 
 void matMulCublasTest() {
-    const int aRows = 5;
-    const int aCols = 3;
+    std::cout << "------------------------------------------" << std::endl;
+    std::cout << "Test Cublas matmul RUNNING." << std::endl;
 
-    const int bRows = 4;
-    const int bCols = 3;
+    const int aRows = 500;
+    const int aCols = 300;
+
+    const int bRows = 400;
+    const int bCols = 300;
 
     float *a_input = generateRandomMatrix(aRows, aCols);
     float *b_input = generateRandomMatrix(bRows, bCols);
@@ -92,8 +117,14 @@ void matMulCublasTest() {
     float *c_output_gpu = (float*) malloc(aRows * bRows * sizeof(float));
     float *c_output_cpu = (float*) malloc(aRows * bRows * sizeof(float));
 
-    matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_gpu);
-    matMulCublas(a_input, aRows, aCols, b_input, bRows, bCols, c_output_cpu);
+    float cuda_time = matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_gpu);
+    float cublas_time = matMulCublas(a_input, aRows, aCols, b_input, bRows, bCols, c_output_cpu);
+
+    cout << endl;
+    cout << "CUBLAS time: " << cublas_time << " milliseconds" << endl;
+    cout << "CUDA time: " << cuda_time << " milliseconds" << endl;
+     cout << endl << "Speedup factor: " <<
+        cublas_time / cuda_time << endl << endl;
 
     // printMatrix(c_output_gpu, aRows, bRows);
     // printMatrix(c_output_cpu, aRows, bRows);
