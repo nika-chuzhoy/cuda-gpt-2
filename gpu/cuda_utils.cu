@@ -81,3 +81,64 @@ extern "C" void matMulCublas(float* a, int aRows, int aCols, float* b, int bRows
     cudaFree(d_C);
     cublasDestroy(handle);
 }
+
+typedef struct {
+    float* dat;
+    int rows, cols;
+} Matrix;
+
+// From Lab 2
+__global__
+void transposeKernel(const float *input, float *output, int n) {
+    const int TILE_DIM = 64;
+    __shared__ float tile[TILE_DIM][TILE_DIM + 1];  // +1 for padding to avoid bank conflicts
+
+    // Global index calculations for reading input
+    int xIndex = blockIdx.x * TILE_DIM + threadIdx.x;
+    int yIndex = blockIdx.y * TILE_DIM + 4 * threadIdx.y;  // Each thread reads 4 elements along y
+
+    // Local index within shared memory
+    int localX = threadIdx.x;
+    int localY = threadIdx.y;
+
+    // Read input matrix in a coalesced manner and store into shared memory
+    tile[localY * 4 + 0][localX] = input[xIndex + (yIndex + 0) * n];
+    tile[localY * 4 + 1][localX] = input[xIndex + (yIndex + 1) * n];
+    tile[localY * 4 + 2][localX] = input[xIndex + (yIndex + 2) * n];
+    tile[localY * 4 + 3][localX] = input[xIndex + (yIndex + 3) * n];
+
+    __syncthreads();  // Synchronize to ensure all writes to shared memory are complete
+
+    // Transpose within shared memory
+    xIndex = blockIdx.y * TILE_DIM + threadIdx.x;
+    yIndex = blockIdx.x * TILE_DIM + 4 * threadIdx.y;
+
+    // Write output in a coalesced manner
+    output[(yIndex + 0) * n + xIndex] = tile[localX][localY * 4 + 0];
+    output[(yIndex + 1) * n + xIndex] = tile[localX][localY * 4 + 1];
+    output[(yIndex + 2) * n + xIndex] = tile[localX][localY * 4 + 2];
+    output[(yIndex + 3) * n + xIndex] = tile[localX][localY * 4 + 3];
+}
+
+extern "C" void cudaTranspose(Matrix a)
+{
+    float *d_input, *d_output;
+    size_t size = a.rows * a.cols * sizeof(float);
+
+    cudaMalloc(&d_input, size);
+    cudaMalloc(&d_output, size);
+
+    cudaMemcpy(d_input, a.dat, size, cudaMemcpyHostToDevice);
+
+    const int TILE_DIM = 64;
+
+    dim3 dimBlock(TILE_DIM, TILE_DIM / 4);
+    dim3 dimGrid((a.cols + TILE_DIM - 1) / TILE_DIM, (a.rows + TILE_DIM - 1) / TILE_DIM);
+
+    transposeKernel<<<dimGrid, dimBlock>>>(d_input, d_output, a.cols);
+
+    cudaMemcpy(a.dat, d_output, size, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_input);
+    cudaFree(d_output);
+}
