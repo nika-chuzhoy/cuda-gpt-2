@@ -18,7 +18,7 @@ SEQ_LEN = 1024
 all: cpu gpu
 
 cpu: bin
-	gcc -O3 $(CPU_SRC) -lm -o $(CPU_BIN)
+	gcc -O3 $(CPU_SRC) -lm -o $(CPU_BIN) -DGOFAST -fopenmp
 	./bin/c_chat_gpt_2 gpt2-124M.ckpt vocab.bpe $(SEQ_LEN)
 
 gpu: bin

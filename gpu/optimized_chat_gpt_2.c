@@ -136,9 +136,9 @@ Matrix matmul_t_fast(Matrix a, Matrix b) {
   Matrix out = NewMatrix(a.rows, b.rows, !token_processed_upto);
 
   // Use the CUDA matrix multiplication function
-  matMulCublas(a.dat, a.rows, a.cols, b.dat, b.rows, b.cols, out.dat);
+  matMulCUDA(a.dat + token_processed_upto * a.cols, num_total_tokens - token_processed_upto, a.cols, b.dat, b.rows, b.cols, out.dat + token_processed_upto * b.rows);
 
-  return out;
+  return add(NewMatrix(out.rows, out.cols, 1), out);
 }
 
 // Take a slice out of a larger matrix and return a new matrix with the given shape

@@ -38,7 +38,7 @@ extern "C" float matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows,
     cudaMemcpy(d_B, b, sizeB, cudaMemcpyHostToDevice);
 
     // Cuda Kernel
-    dim3 dimBlock(16, 16);
+    dim3 dimBlock(32, 32);
     dim3 dimGrid((bRows + dimBlock.x - 1) / dimBlock.x, (aRows + dimBlock.y - 1) / dimBlock.y);
     matMulCudaKernel<<<dimGrid, dimBlock>>>(d_A, d_B, d_C, aRows, aCols, bRows);
 
