@@ -13,7 +13,7 @@ float matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows, int bCols,
 
 float matMulCublas(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out);
 
-void transposeCUDA(Matrix a);
+void transposeCUDA(Matrix a, Matrix out);
 
 Matrix sliceCublas(Matrix a, int b, int rows, int cols);
 

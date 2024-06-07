@@ -109,9 +109,7 @@ Matrix sum(Matrix a) {
 // Transpose a matrix flipping the rows and columns
 Matrix transpose(Matrix a) {
     Matrix out = NewMatrix(a.cols, a.rows, 1);
-    LOOP(i, a.rows * a.cols) {
-        out.dat[i % a.cols * a.rows + i / a.cols] = a.dat[i];
-    }
+    transposeCUDA(a, out);
     return out;
 }
 

@@ -163,7 +163,7 @@ void cudaTransposeTest() {
     mat.cols = cols;
 
     transposeCPU(h_input, h_output_cpu, rows, cols);
-    transposeCUDA(mat);
+    transposeCUDA(mat, mat);
 
     // printMatrix(h_output_cpu, cols, rows);
     // printMatrix(mat.dat, cols, rows);

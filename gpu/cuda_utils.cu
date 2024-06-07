@@ -148,7 +148,7 @@ void transposeKernel(const float *input, float *output, int rows, int cols) {
     }
 }
 
-extern "C" void transposeCUDA(Matrix a)
+extern "C" void transposeCUDA(Matrix a, Matrix out)
 {
     float *d_input, *d_output;
     size_t size = a.rows * a.cols * sizeof(float);
@@ -165,7 +165,7 @@ extern "C" void transposeCUDA(Matrix a)
 
     transposeKernel<<<dimGrid, dimBlock>>>(d_input, d_output, a.rows, a.cols);
 
-    cudaMemcpy(a.dat, d_output, size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(out.dat, d_output, size, cudaMemcpyDeviceToHost);
 
     cudaFree(d_input);
     cudaFree(d_output);
