@@ -18,13 +18,7 @@ __global__ void matMulCudaKernel(float* A, float* B, float* C, int aRows, int aC
     }
 }
 
-extern "C" float matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
-    cudaEvent_t start_gpu, stop_gpu;
-    float time_milli = -1;
-    cudaEventCreate(&start_gpu);
-    cudaEventCreate(&stop_gpu);
-    cudaEventRecord(start_gpu);
-
+extern "C" void matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
     float *d_A, *d_B, *d_C;
     size_t sizeA = aRows * aCols * sizeof(float);
     size_t sizeB = bRows * bCols * sizeof(float);
@@ -46,21 +40,10 @@ extern "C" float matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows,
     cudaFree(d_A);
     cudaFree(d_B);
     cudaFree(d_C);
-
-    cudaEventRecord(stop_gpu);
-    cudaEventSynchronize(stop_gpu);
-    cudaEventElapsedTime(&time_milli, start_gpu, stop_gpu);
-    return time_milli;
 }
 
 // Cublas for matrix multiplication with A and transpose(B)
-extern "C" float matMulCublas(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
-    cudaEvent_t start_gpu, stop_gpu;
-    float time_milli = -1;
-    cudaEventCreate(&start_gpu);
-    cudaEventCreate(&stop_gpu);
-    cudaEventRecord(start_gpu);
-
+extern "C" void matMulCublas(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
     cublasHandle_t handle;
     cublasCreate(&handle);
 
@@ -98,10 +81,6 @@ extern "C" float matMulCublas(float* a, int aRows, int aCols, float* b, int bRow
     cudaFree(d_B);
     cudaFree(d_C);
     cublasDestroy(handle);
-    cudaEventRecord(stop_gpu);
-    cudaEventSynchronize(stop_gpu);
-    cudaEventElapsedTime(&time_milli, start_gpu, stop_gpu);
-    return time_milli;
 }
 
 // Take a slice out of a larger matrix and return a new matrix with the given shape

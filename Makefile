@@ -28,7 +28,7 @@ gpu: bin
 
 test: clean
 	nvcc -c $(GPU_SRC_CU) -o $(GPU_OBJ)
-	gcc -O3 $(TEST_SRC) $(GPU_OBJ) -o $(TEST_BIN) -L/usr/local/cuda/lib64 -lcudart -lcublas -lm -lstdc++
+	gcc -O3 $(TEST_SRC) $(GPU_OBJ) -o $(TEST_BIN) -L/usr/local/cuda/lib64 -lcudart -lcublas -lm -lstdc++ -DGOFAST -fopenmp
 	./$(TEST_BIN)
 
 download:
