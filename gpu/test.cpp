@@ -27,18 +27,6 @@ float* generateRandomMatrix(int rows, int cols) {
 }
 
 void matMulCPU(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
-//    for (int i = 0; i < aRows; i++) {
-//         for (int j = 0; j < bRows; j++) {
-//             float sum = 0;
-//             for (int k = 0; k < aCols; k++) {
-//                 sum += a[i * aCols + k] * b[j * bCols + k];
-//                 if (j == 3) {
-//               }
-//             }
-//             out[i * bRows + j] = sum;
-//         }
-//     }
-
 #ifdef GOFAST
 #pragma omp parallel
 #endif
