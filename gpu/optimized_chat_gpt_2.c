@@ -102,7 +102,7 @@ Matrix sum(Matrix a) {
         out.dat[(i / a.cols) * a.cols] += a.dat[i];
     }
 
-    broadcast(out, 0);
+    broadcastCUDA(out, 0);
     return out;
 }
 
@@ -150,9 +150,9 @@ Matrix slice(Matrix a, int b, int rows, int cols) {
 // A somewhat weird unary operator that computes the "layernorm" operator.
 // Exactly what it does doesn't matter.
 Matrix LayerNorm(Matrix a, int i) {
-    Matrix b = add(a, divide_const(sum(a), -a.cols));
-    Matrix k = divide_const(sum(multiply(add(NewMatrix(b.rows, b.cols, 1), b), b)), b.cols - 1);  // todo can remove -1
-    Matrix out = add_tile(multiply_tile(multiply(add(NewMatrix(b.rows, b.cols, 1), b), mat_isqrt(add_const(k, 1e-5), 0)), layer_weights[i + 1]), layer_weights[i]);
+    Matrix b = add(a, divide_constCUDA(sum(a), -a.cols));
+    Matrix k = divide_constCUDA(sum(multiply(add(NewMatrix(b.rows, b.cols, 1), b), b)), b.cols - 1);  // todo can remove -1
+    Matrix out = add_tile(multiply_tile(multiply(add(NewMatrix(b.rows, b.cols, 1), b), mat_isqrtCUDA(add_constCUDA(k, 1e-5), 0)), layer_weights[i + 1]), layer_weights[i]);
 
     return out;
 }
@@ -405,7 +405,7 @@ int main(int tmp, char** argv) {
                     // Split the qkv into each of the heads
                     Matrix merge = transpose(slice(qkv, k * 3, 64 * T, 3)),
                         // perform the product of the queries and keys and then exponentiate
-                        a = tril(matmul_t_fast(transpose(slice(merge, 0, 64, T)),
+                        a = trilCUDA(matmul_t_fast(transpose(slice(merge, 0, 64, T)),
                                             transpose(slice(merge, T, 64, T))),
                                 T),
                         // finally multiply the softmax output (a/sum(a)) with the values matrix
@@ -418,7 +418,7 @@ int main(int tmp, char** argv) {
                 line = add(line, Linear(transpose(result), 2));
 
                 // Activation function and residual connection
-                line = add(line, Linear(GELU(Linear(LayerNorm(line, 6), 8), 0), 10));
+                line = add(line, Linear(GELUCUDA(Linear(LayerNorm(line, 6), 8), 0), 10));
             }
 
             // Reset layer weights so we can do the last layer norm
@@ -435,7 +435,7 @@ int main(int tmp, char** argv) {
             // Calculate softmax probabilities
             int size = 5e4;
             float temperature = 0.7;
-            float* logits = divide_const(result, temperature).dat;
+            float* logits = divide_constCUDA(result, temperature).dat;
             double max = logits[0];
             for (int i = 1; i < size; i++) {
                 if (logits[i] > max) {
