@@ -149,3 +149,47 @@ extern "C" void transposeCUDA(Matrix a, Matrix out)
     cudaFree(d_input);
     cudaFree(d_output);
 }
+
+//  Matrix fn(Matrix a, float k)
+#define UNARY(fn, opr)                                                 \
+    __global__ void fn##Kernel(float* a, int aRows, int aCols, float* out, float k) { \
+        int row = blockIdx.y * blockDim.y + threadIdx.y;               \
+        int col = blockIdx.x * blockDim.x + threadIdx.x;               \
+        if (row < aRows && col < aCols) {                              \
+            int i = row * aCols + col;                               \
+            float b = a[i];                                            \
+            out[i] = opr;                                              \
+        }                                                              \
+    }                                                                  \
+    extern "C" Matrix fn##CUDA(Matrix m, float k) {                    \
+        float* a = m.dat;                                              \
+        int aRows = m.rows;                                            \
+        int aCols = m.cols;                                            \
+        float *d_a;                                                    \
+        size_t sizeA = aRows * aCols * sizeof(float);                  \
+        cudaMalloc((void**)&d_a, sizeA);                               \
+        cudaMemcpy(d_a, a, sizeA, cudaMemcpyHostToDevice);             \
+        dim3 blockSize(16, 16);                                        \
+        dim3 gridSize((aCols + blockSize.x - 1) / blockSize.x,         \
+                      (aRows + blockSize.y - 1) / blockSize.y);        \
+        fn##Kernel<<<gridSize, blockSize>>>(d_a, aRows, aCols, d_a, k);\
+        cudaMemcpy(m.dat, d_a, sizeA, cudaMemcpyDeviceToHost);         \
+        cudaFree(d_a);                                                 \
+        return m;                                                      \
+    }
+
+UNARY(divide_const, b / k)                      // divide by a constant
+UNARY(add_const, b + k)                         // add a constant
+UNARY(mat_isqrt, 1. / sqrt(b))                  // square root each entry
+UNARY(mat_exp, exp(b))                          // exponetiate each entry
+UNARY(broadcast, a[(i / aCols) * aCols])  // copy the first column to every column
+
+// Tril is the first of two special functions.
+//   a   b   c        exp(a/8) exp(b/8) exp(c/8)
+//   d   e   f   ->      0     exp(e/8) exp(f/8)
+//   g   h   i           0        0        0
+// it's use will be described later
+UNARY(tril, (i / k < i % (int)k) ? 0 : exp(b / 8))
+
+// GELU is the activation function used for transformers
+UNARY(GELU, b / 2 * (1 + tanh(.7978845 * (b + .044715 * b * b * b))))
