@@ -138,7 +138,7 @@ Matrix matmul_t_fast(Matrix a, Matrix b) {
   // Use the CUDA matrix multiplication function
   matMulCUDA(a.dat + token_processed_upto * a.cols, num_total_tokens - token_processed_upto, a.cols, b.dat, b.rows, b.cols, out.dat + token_processed_upto * b.rows);
 
-  return add(NewMatrix(out.rows, out.cols, 1), out);
+  return addCUDA(NewMatrix(out.rows, out.cols, 1), out);
 }
 
 // Take a slice out of a larger matrix and return a new matrix with the given shape
@@ -150,15 +150,15 @@ Matrix slice(Matrix a, int b, int rows, int cols) {
 // A somewhat weird unary operator that computes the "layernorm" operator.
 // Exactly what it does doesn't matter.
 Matrix LayerNorm(Matrix a, int i) {
-    Matrix b = add(a, divide_constCUDA(sum(a), -a.cols));
-    Matrix k = divide_constCUDA(sum(multiply(add(NewMatrix(b.rows, b.cols, 1), b), b)), b.cols - 1);  // todo can remove -1
-    Matrix out = add_tile(multiply_tile(multiply(add(NewMatrix(b.rows, b.cols, 1), b), mat_isqrtCUDA(add_constCUDA(k, 1e-5), 0)), layer_weights[i + 1]), layer_weights[i]);
+    Matrix b = addCUDA(a, divide_constCUDA(sum(a), -a.cols));
+    Matrix k = divide_constCUDA(sum(multiplyCUDA(addCUDA(NewMatrix(b.rows, b.cols, 1), b), b)), b.cols - 1);  // todo can remove -1
+    Matrix out = add_tileCUDA(multiply_tileCUDA(multiplyCUDA(addCUDA(NewMatrix(b.rows, b.cols, 1), b), mat_isqrtCUDA(add_constCUDA(k, 1e-5), 0)), layer_weights[i + 1]), layer_weights[i]);
 
     return out;
 }
 
 // Compute a linear matrix layer, x * W + b
-#define Linear(a, i) add_tile(matmul_t_fast(a, layer_weights[i + 1]), layer_weights[i])
+#define Linear(a, i) add_tileCUDA(matmul_t_fast(a, layer_weights[i + 1]), layer_weights[i])
 
 // Read a weight matrix out of the data file into memory
 Matrix read_matrix(int rows, int cols) {
@@ -409,16 +409,16 @@ int main(int tmp, char** argv) {
                                             transpose(slice(merge, T, 64, T))),
                                 T),
                         // finally multiply the softmax output (a/sum(a)) with the values matrix
-                        out = transpose(matmul_t_fast(divide(a, sum(a)), slice(merge, T * 2, 64, T)));
+                        out = transpose(matmul_t_fast(divideCUDA(a, sum(a)), slice(merge, T * 2, 64, T)));
                     // and copy the output to the proper location in the result matrix
                     memcpy(result.dat + 64 * T * k, out.dat, 64 * T * 4);
                 }
 
                 // Residual connection
-                line = add(line, Linear(transpose(result), 2));
+                line = addCUDA(line, Linear(transpose(result), 2));
 
                 // Activation function and residual connection
-                line = add(line, Linear(GELUCUDA(Linear(LayerNorm(line, 6), 8), 0), 10));
+                line = addCUDA(line, Linear(GELUCUDA(Linear(LayerNorm(line, 6), 8), 0), 10));
             }
 
             // Reset layer weights so we can do the last layer norm
