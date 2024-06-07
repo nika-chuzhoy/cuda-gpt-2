@@ -36,6 +36,26 @@ UNARY(tril, (i / k < i % (int)k) ? 0 : exp(b / 8))
 // GELU is the activation function used for transformers
 UNARY(GELU, b / 2 * (1 + tanh(.7978845 * (b + .044715 * b * b * b))))
 
+// Binary matrix meta-function here.
+// Loop over pairs of entries in two matricies and operate on them
+#define BINARY(fn, opr)                                               \
+    Matrix fn(Matrix a, Matrix b) {                                   \
+        LOOP(i, a.rows* a.cols) { a.dat[i] = a.dat[i] opr b.dat[i]; } \
+        return a;                                                     \
+    }
+
+BINARY(add, +)       // add two matrices together
+BINARY(multiply, *)  // multiply two matrices together
+BINARY(divide, /)    // divide the first matrix by the second
+
+// We also have some ugly hacks here to implement "tiling"
+// that lets us add or multiply one matrix by the first column of a second
+// To do this tiling, we don't want to operate on b.dat[i], so instead
+// we re-index with what we want and then just stick a ; there to
+// drop the actual b.dat[i]
+BINARY(add_tile, +b.dat[i % a.cols];)
+BINARY(multiply_tile, *b.dat[i % a.cols];)
+
 bool compareMatrices(float *a, float *b, int rows, int cols) {
     for (int i = 0; i < rows * cols; i++) {
         if (fabs(a[i] - b[i]) > 1e-2) {
@@ -346,6 +366,75 @@ UNARYtest(broadcast)
 UNARYtest(tril)
 UNARYtest(GELU)
 
+#define BINARYtest(fn)                                                          \
+    void cuda##fn##Test() {                                                     \
+        std::cout << "------------------------------------------" << std::endl; \
+        std::cout << "Test " << #fn << " RUNNING." << std::endl;                \
+        const int rows = 6666;                                                  \
+        const int cols = 9999;                                                  \
+                                                                                \
+        float k = 5.0;                                                          \
+                                                                                \
+        Matrix cpu_a;                                                           \
+        cpu_a.dat = generateRandomMatrix(rows, cols);                           \
+        cpu_a.rows = rows;                                                      \
+        cpu_a.cols = cols;                                                      \
+        Matrix cpu_b;                                                           \
+        cpu_b.dat = generateRandomMatrix(rows, cols);                           \
+        cpu_b.rows = rows;                                                      \
+        cpu_b.cols = cols;                                                      \
+                                                                                \
+        Matrix gpu_a = cloneMatrix(cpu_a);                                      \
+        Matrix gpu_b = cloneMatrix(cpu_b);                                      \
+                                                                                \
+        cudaEvent_t start_cpu, stop_cpu;                                        \
+        cudaEventCreate(&start_cpu);                                            \
+        cudaEventCreate(&stop_cpu);                                             \
+        cudaEventRecord(start_cpu);                                             \
+                                                                                \
+        Matrix cpu_out = fn(cpu_a, cpu_b);                                      \
+                                                                                \
+        cudaEventRecord(stop_cpu);                                              \
+        cudaEventSynchronize(stop_cpu);                                         \
+        float cpu_time_milliseconds;                                            \
+        cudaEventElapsedTime(&cpu_time_milliseconds, start_cpu, stop_cpu);      \
+                                                                                \
+        cudaEvent_t start_gpu, stop_gpu;                                        \
+        cudaEventCreate(&start_gpu);                                            \
+        cudaEventCreate(&stop_gpu);                                             \
+        cudaEventRecord(start_gpu);                                             \
+                                                                                \
+        Matrix gpu_out = fn##CUDA(gpu_a, gpu_b);                                \
+                                                                                \
+        cudaEventRecord(stop_gpu);                                              \
+        cudaEventSynchronize(stop_gpu);                                         \
+        float gpu_time_milliseconds;                                            \
+        cudaEventElapsedTime(&gpu_time_milliseconds, start_gpu, stop_gpu);      \
+                                                                                \
+        std::cout << std::endl;                                                 \
+        std::cout << "CPU time: " << cpu_time_milliseconds << " milliseconds" << std::endl;\
+        std::cout << "GPU time: " << gpu_time_milliseconds << " milliseconds" << std::endl;\
+        std::cout << std::endl << "Speedup factor: " <<                         \
+            cpu_time_milliseconds / gpu_time_milliseconds << std::endl << std::endl;\
+                                                                                \
+        if (compareMatrices(cpu_out.dat, gpu_out.dat, cols, rows)) {            \
+            std::cout << "Test " << #fn << " PASSED." << std::endl;             \
+        } else {                                                                \
+            std::cout << "Test " << #fn << " FAILED." << std::endl;             \
+        }                                                                       \
+                                                                                \
+        free(cpu_a.dat);                                                        \
+        free(gpu_a.dat);                                                        \
+        free(cpu_b.dat);                                                        \
+        free(gpu_b.dat);                                                        \
+    }
+
+BINARYtest(add)
+BINARYtest(multiply)
+BINARYtest(divide)
+BINARYtest(add_tile)
+BINARYtest(multiply_tile)
+
 int main() {
 
     matMulCUDATest();
@@ -358,6 +447,11 @@ int main() {
     cudabroadcastTest();
     cudatrilTest();
     cudaGELUTest();
+    cudaaddTest();
+    cudamultiplyTest();
+    cudadivideTest();
+    cudaadd_tileTest();
+    cudamultiply_tileTest();
 
     return 0;
 }
