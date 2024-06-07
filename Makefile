@@ -26,6 +26,17 @@ gpu: bin
 	gcc -O3 $(GPU_SRC_C) $(GPU_OBJ) -o $(GPU_BIN) -L/usr/local/cuda/lib64 -lcudart -lm -lstdc++ -lcublas
 	./bin/optimized_chat_gpt_2 gpt2-124M.ckpt vocab.bpe $(SEQ_LEN)
 
+# Deterministic versions for testing purposes 
+# Specify seed, for example "make gpu_seed seed=1234"
+cpu_seed: bin
+	gcc -O3 $(CPU_SRC) -lm -o $(CPU_BIN) -DGOFAST -fopenmp
+	./bin/c_chat_gpt_2 gpt2-124M.ckpt vocab.bpe $(SEQ_LEN) $(seed)
+
+gpu_seed: bin
+	nvcc -c $(GPU_SRC_CU) -o $(GPU_OBJ)
+	gcc -O3 $(GPU_SRC_C) $(GPU_OBJ) -o $(GPU_BIN) -L/usr/local/cuda/lib64 -lcudart -lm -lstdc++ -lcublas
+	./bin/optimized_chat_gpt_2 gpt2-124M.ckpt vocab.bpe $(SEQ_LEN) $(seed)
+
 test: clean
 	nvcc -c $(GPU_SRC_CU) -o $(GPU_OBJ)
 	gcc -O3 $(TEST_SRC) $(GPU_OBJ) -o $(TEST_BIN) -L/usr/local/cuda/lib64 -lcudart -lcublas -lm -lstdc++ -DGOFAST -fopenmp

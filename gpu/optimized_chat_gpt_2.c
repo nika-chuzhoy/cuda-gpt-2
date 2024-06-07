@@ -236,6 +236,12 @@ int main(int tmp, char** argv) {
     double cpu_time_used;
     start = clock();
 
+    //  Set random seed, for testing purposes
+    if (tmp == 5) {
+        int seed = atoi(argv[4]);
+        srand(seed);
+    }
+
     // Initially let's figure out the right hyperparameters for this model
     // argv[1] stores the name of the model we're loading
     // tmp will map 124M -> 0, 355M -> 1, 775M -> 2, 1558M -> 3
