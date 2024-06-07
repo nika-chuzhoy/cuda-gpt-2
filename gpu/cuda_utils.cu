@@ -158,6 +158,7 @@ extern "C" void transposeCUDA(Matrix a, Matrix out)
         if (row < aRows && col < aCols) {                              \
             int i = row * aCols + col;                                 \
             float b = a[i];                                            \
+            b += 0;                                                    \
             out[i] = opr;                                              \
         }                                                              \
     }                                                                  \
