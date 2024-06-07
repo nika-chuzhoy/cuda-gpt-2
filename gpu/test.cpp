@@ -27,15 +27,33 @@ float* generateRandomMatrix(int rows, int cols) {
 }
 
 void matMulCPU(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
-   for (int i = 0; i < aRows; i++) {
-        for (int j = 0; j < bRows; j++) {
-            float sum = 0;
-            for (int k = 0; k < aCols; k++) {
-                sum += a[i * aCols + k] * b[j * bCols + k];
-                if (j == 3) {
-              }
+//    for (int i = 0; i < aRows; i++) {
+//         for (int j = 0; j < bRows; j++) {
+//             float sum = 0;
+//             for (int k = 0; k < aCols; k++) {
+//                 sum += a[i * aCols + k] * b[j * bCols + k];
+//                 if (j == 3) {
+//               }
+//             }
+//             out[i * bRows + j] = sum;
+//         }
+//     }
+
+#ifdef GOFAST
+#pragma omp parallel
+#endif
+    {
+        for (int i = 0; i < aRows; i++) {
+#ifdef GOFAST
+#pragma omp for
+#endif
+            for (int j = 0; j < bRows; j += 4) {
+                for (int k = 0; k < aCols; k += 4) {
+                    for (int k2 = 0; k2 < 4; k2++)
+                        for (int j2 = 0; j2 < 4; j2++)
+                            out[i * bRows + j + j2] += a[i * aCols + k + k2] * b[(j + j2) * bCols + k + k2];
+                }
             }
-            out[i * bRows + j] = sum;
         }
     }
 }
@@ -79,7 +97,18 @@ void matMulCUDATest() {
     float cpu_time_milliseconds;
     cudaEventElapsedTime(&cpu_time_milliseconds, start_cpu, stop_cpu);
 
-    float gpu_time_milliseconds = matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_gpu);
+    cudaEvent_t start_gpu, stop_gpu;
+    cudaEventCreate(&start_gpu);
+    cudaEventCreate(&stop_gpu);
+    cudaEventRecord(start_gpu);
+
+    matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_gpu);
+
+    cudaEventRecord(stop_gpu);
+    cudaEventSynchronize(stop_gpu);
+    float gpu_time_milliseconds;
+    cudaEventElapsedTime(&gpu_time_milliseconds, start_gpu, stop_gpu);
+
     // printMatrix(c_output_gpu, aRows, bRows);
     // printMatrix(c_output_cpu, aRows, bRows);
 
@@ -117,14 +146,35 @@ void matMulCublasTest() {
     float *c_output_gpu = (float*) malloc(aRows * bRows * sizeof(float));
     float *c_output_cpu = (float*) malloc(aRows * bRows * sizeof(float));
 
-    float cuda_time = matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_gpu);
-    float cublas_time = matMulCublas(a_input, aRows, aCols, b_input, bRows, bCols, c_output_cpu);
+    cudaEvent_t start_cpu, stop_cpu;
+    cudaEventCreate(&start_cpu);
+    cudaEventCreate(&stop_cpu);
+    cudaEventRecord(start_cpu);
+
+    matMulCublas(a_input, aRows, aCols, b_input, bRows, bCols, c_output_cpu);
+
+    cudaEventRecord(stop_cpu);
+    cudaEventSynchronize(stop_cpu);
+    float cpu_time_milliseconds;
+    cudaEventElapsedTime(&cpu_time_milliseconds, start_cpu, stop_cpu);
+
+    cudaEvent_t start_gpu, stop_gpu;
+    cudaEventCreate(&start_gpu);
+    cudaEventCreate(&stop_gpu);
+    cudaEventRecord(start_gpu);
+
+    matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_gpu);
+
+    cudaEventRecord(stop_gpu);
+    cudaEventSynchronize(stop_gpu);
+    float gpu_time_milliseconds;
+    cudaEventElapsedTime(&gpu_time_milliseconds, start_gpu, stop_gpu);
 
     cout << endl;
-    cout << "CUBLAS time: " << cublas_time << " milliseconds" << endl;
-    cout << "CUDA time: " << cuda_time << " milliseconds" << endl;
-     cout << endl << "Speedup factor: " <<
-        cublas_time / cuda_time << endl << endl;
+    cout << "CUBLAS time: " << cpu_time_milliseconds << " milliseconds" << endl;
+    cout << "CUDA time: " << gpu_time_milliseconds << " milliseconds" << endl;
+    cout << endl << "Speedup factor: " <<
+        cpu_time_milliseconds / gpu_time_milliseconds << endl << endl;
 
     // printMatrix(c_output_gpu, aRows, bRows);
     // printMatrix(c_output_cpu, aRows, bRows);
@@ -142,17 +192,17 @@ void matMulCublasTest() {
 }
 
 void transposeCPU(float *input, float *output, int rows, int cols) {
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            output[j * rows + i] = input[i * cols + j];
-        }
+    for (int i = 0; i < rows * cols; i++) {
+        output[i % cols * rows + i / cols] = input[i];
     }
 }
 
 
 void cudaTransposeTest() {
-    const int rows = 77;
-    const int cols = 80;
+     std::cout << "------------------------------------------" << std::endl;
+    std::cout << "Test Transpose RUNNING." << std::endl;
+    const int rows = 770;
+    const int cols = 800;
 
     float *h_input = generateRandomMatrix(rows, cols);
     float *h_output_cpu = (float*) malloc(rows * cols  * sizeof(float));
@@ -162,8 +212,35 @@ void cudaTransposeTest() {
     mat.rows = rows;
     mat.cols = cols;
 
+    cudaEvent_t start_cpu, stop_cpu;
+    cudaEventCreate(&start_cpu);
+    cudaEventCreate(&stop_cpu);
+    cudaEventRecord(start_cpu);
+
     transposeCPU(h_input, h_output_cpu, rows, cols);
+
+    cudaEventRecord(stop_cpu);
+    cudaEventSynchronize(stop_cpu);
+    float cpu_time_milliseconds;
+    cudaEventElapsedTime(&cpu_time_milliseconds, start_cpu, stop_cpu);
+
+    cudaEvent_t start_gpu, stop_gpu;
+    cudaEventCreate(&start_gpu);
+    cudaEventCreate(&stop_gpu);
+    cudaEventRecord(start_gpu);
+
     transposeCUDA(mat, mat);
+
+    cudaEventRecord(stop_gpu);
+    cudaEventSynchronize(stop_gpu);
+    float gpu_time_milliseconds;
+    cudaEventElapsedTime(&gpu_time_milliseconds, start_gpu, stop_gpu);
+
+    cout << endl;
+    cout << "CPU time: " << cpu_time_milliseconds << " milliseconds" << endl;
+    cout << "GPU time: " << gpu_time_milliseconds << " milliseconds" << endl;
+    cout << endl << "Speedup factor: " <<
+        cpu_time_milliseconds / gpu_time_milliseconds << endl << endl;
 
     // printMatrix(h_output_cpu, cols, rows);
     // printMatrix(mat.dat, cols, rows);
