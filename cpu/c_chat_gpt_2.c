@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/time.h>
 #include <stdbool.h>
 
 int DIM, NLAYER, NHEAD;
@@ -97,6 +98,13 @@ BINARY(divide, /)    // divide the first matrix by the second
 // drop the actual b.dat[i]
 BINARY(add_tile, +b.dat[i % a.cols];)
 BINARY(multiply_tile, *b.dat[i % a.cols];)
+
+// Helper function for timing
+double get_wall_time() {
+    struct timeval time;
+    gettimeofday(&time, NULL);
+    return (double)time.tv_sec + (double)time.tv_usec * 1e-6;
+}
 
 // Compute the sum of the rows in a matrix, populating each row with the same sum
 Matrix sum(Matrix a) {
@@ -380,8 +388,8 @@ void do_inference(clock_t start, clock_t end, double cpu_time_used, Matrix wpe, 
 
         // If it's a newline this is the end of the converstaion
         if (bpe[tmp * 999] == 10) {
-            end = clock();
-            cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+            end = get_wall_time();
+            cpu_time_used = ((double)(end - start));
             printf("\n\n----Seconds to respond: %f----\n", cpu_time_used);
             break;
         }
@@ -396,22 +404,25 @@ void do_inference(clock_t start, clock_t end, double cpu_time_used, Matrix wpe, 
 int main(int tmp, char** argv) {
     clock_t start, end;
     double cpu_time_used;
-    start = clock();
+    start = get_wall_time();
     bool is_set_prompt = false;
     char *set_prompt;
-    bool is_set_seed = false;
-    int seed;
+    int seed = time(NULL);
 
     //  Set random seed, for testing purposes
-    if (tmp == 5) {
-        int seed = atoi(argv[4]);
-        is_set_seed = true;
+    if (tmp >= 5) {
+        seed = atoi(argv[4]);
     }
     //  If this is a set-prompt run
     if (tmp >= 6) {
         set_prompt = argv[5];
-        is_set_prompt = true;
+        if(strcmp(set_prompt, "") != 0){
+            is_set_prompt = true;
+        }
     }
+
+    printf("Random seed %d\n", seed);
+    srand(seed);
 
     // Initially let's figure out the right hyperparameters for this model
     // argv[1] stores the name of the model we're loading
@@ -488,8 +499,8 @@ int main(int tmp, char** argv) {
     Matrix wpe = read_matrix(1024, DIM),
         wte = transpose(read_matrix(5e4, DIM));
 
-    end = clock();
-    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+    end = get_wall_time();
+    cpu_time_used = ((double)(end - start));
     printf("\n---- Seconds to load: %f ----\t\n", cpu_time_used);
 
     /////////////////////////////////////////////////////////////
@@ -497,9 +508,8 @@ int main(int tmp, char** argv) {
     /////////////////////////////////////////////////////////////
 
     if(is_set_prompt) {
-        start = clock();
-        srand(seed);
-
+        start = get_wall_time();
+    
         char buf[1000] = {0};
         int T;
         printf("\nHuman: ");
@@ -518,8 +528,7 @@ int main(int tmp, char** argv) {
         do_inference(start, end, cpu_time_used, wpe, wte, weights, T, buf, output);
     } else {
         while (1) {
-            start = clock();
-            srand(seed);
+            start = get_wall_time();
 
             char buf[1000] = {0};
             int T;

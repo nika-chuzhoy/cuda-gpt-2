@@ -151,6 +151,56 @@ extern "C" void matMulCublas(float* a, int aRows, int aCols, float* b, int bRows
     cublasDestroy(handle);
 }
 
+// Brodcasts sum of each row across rows
+__global__ void sumCudaKernel(float* input, float* output, int rows, int cols) {
+    int blockRow = blockIdx.x * blockDim.x;
+    extern __shared__ float sharedSum[]; // Determine size at runtime
+
+    for (int row = blockRow + threadIdx.x; row < rows; row += blockDim.x * gridDim.x) {
+        float sum = 0;
+        for (int col = threadIdx.y; col < cols; col += blockDim.y) {
+            sum += input[row * cols + col];
+        }
+        sharedSum[threadIdx.y] = sum;
+
+        __syncthreads(); 
+
+        if (threadIdx.y == 0) {
+            float totalSum = 0;
+            for (int i = 0; i < blockDim.y; i++) {
+                totalSum += sharedSum[i];
+            }
+            output[row] = totalSum;
+        }
+        __syncthreads();
+    }
+}
+
+
+extern "C" void sumCuda(Matrix a, Matrix out)
+{
+    float *d_input, *d_output;
+    size_t size = a.rows * a.cols * sizeof(float);
+
+    cudaMalloc(&d_input, size);
+    cudaMalloc(&d_output, size);
+
+    cudaMemcpy(d_input, a.dat, size, cudaMemcpyHostToDevice);
+
+    dim3 dimBlock(1, 256);
+    dim3 dimGrid(128, 1);
+    int sharedMemSize = blockSize.y * sizeof(float);
+
+    sumCudaKernel<<<dimGrid, dimBlock, sharedMemSize>>>(d_input, d_output, a.rows, a.cols);
+    broadcastCUDA(out, 0);
+
+    cudaMemcpy(out.dat, d_output, size, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_input);
+    cudaFree(d_output);
+}
+
+
 // Take a slice out of a larger matrix and return a new matrix with the given shape
 extern "C" Matrix sliceCublas(Matrix a, int b, int rows, int cols) {
     // change to devicetodevice later TODO

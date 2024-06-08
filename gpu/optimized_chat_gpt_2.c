@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/time.h>
 #include <stdbool.h>
 #include"cuda_utils.h"
 
@@ -46,54 +47,12 @@ Matrix NewMatrix(int rows, int cols, int reuse) {
     return out;
 }
 
-// Unary matrix meta-function here.
-// Loop over every entry in a matrix and operate on it
-// (independent of any other entry, possibly using some constant k)
-#define UNARY(fn, opr)             \
-    Matrix fn(Matrix a, float k) { \
-        LOOP(i, a.rows* a.cols) {  \
-            float b = a.dat[i];    \
-            a.dat[i] = opr;        \
-        }                          \
-        return a;                  \
-    }
-
-UNARY(divide_const, b / k)                      // divide by a constant
-UNARY(add_const, b + k)                         // add a constant
-UNARY(mat_isqrt, 1. / sqrt(b))                  // square root each entry
-UNARY(mat_exp, exp(b))                          // exponetiate each entry
-UNARY(broadcast, a.dat[(i / a.cols) * a.cols])  // copy the first column to every column
-
-// Tril is the first of two special functions.
-//   a   b   c        exp(a/8) exp(b/8) exp(c/8)
-//   d   e   f   ->      0     exp(e/8) exp(f/8)
-//   g   h   i           0        0        0
-// it's use will be described later
-UNARY(tril, (i / k < i % (int)k) ? 0 : exp(b / 8))
-
-// GELU is the activation function used for transformers
-UNARY(GELU, b / 2 * (1 + tanh(.7978845 * (b + .044715 * b * b * b))))
-
-// Binary matrix meta-function here.
-// Loop over pairs of entries in two matricies and operate on them
-#define BINARY(fn, opr)                                               \
-    Matrix fn(Matrix a, Matrix b) {                                   \
-        LOOP(i, a.rows* a.cols) { a.dat[i] = a.dat[i] opr b.dat[i]; } \
-        return a;                                                     \
-    }
-
-BINARY(add, +)       // add two matrices together
-BINARY(multiply, *)  // multiply two matrices together
-BINARY(divide, /)    // divide the first matrix by the second
-BINARY(subtract, -)
-
-// We also have some ugly hacks here to implement "tiling"
-// that lets us add or multiply one matrix by the first column of a second
-// To do this tiling, we don't want to operate on b.dat[i], so instead
-// we re-index with what we want and then just stick a ; there to
-// drop the actual b.dat[i]
-BINARY(add_tile, +b.dat[i % a.cols];)
-BINARY(multiply_tile, *b.dat[i % a.cols];)
+// Helper function for timing
+double get_wall_time() {
+    struct timeval time;
+    gettimeofday(&time, NULL);
+    return (double)time.tv_sec + (double)time.tv_usec * 1e-6;
+}
 
 // Compute the sum of the rows in a matrix, populating each row with the same sum
 Matrix sum(Matrix a) {
@@ -387,19 +346,22 @@ int main(int tmp, char** argv) {
     start = clock();
     bool is_set_prompt = false;
     char *set_prompt;
-    bool is_set_seed = false;
-    int seed;
+    int seed = time(NULL);
 
     //  Set random seed, for testing purposes
     if (tmp >= 5) {
         seed = atoi(argv[4]);
-        is_set_seed = true;
     }
     //  If this is a set-prompt run
     if (tmp >= 6) {
         set_prompt = argv[5];
-        is_set_prompt = true;
+        if(strcmp(set_prompt, "") != 0){
+            is_set_prompt = true;
+        }
     }
+
+    printf("Random seed %d\n", seed);
+    srand(seed);
 
     // Initially let's figure out the right hyperparameters for this model
     // argv[1] stores the name of the model we're loading
@@ -486,7 +448,6 @@ int main(int tmp, char** argv) {
 
     if(is_set_prompt) {
         start = clock();
-        srand(seed);
 
         char buf[1000] = {0};
         int T;
@@ -507,7 +468,6 @@ int main(int tmp, char** argv) {
     } else {
         while (1) {  // Nika loop
             start = clock();
-            srand(seed);
 
             char buf[1000] = {0};
             int T;

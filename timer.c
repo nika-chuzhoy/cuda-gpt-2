@@ -49,7 +49,7 @@ float time(const char *prompt, char *type) {
 
 int main() {
     // Array of prompt strings
-    const size_t num_prompts = 1;
+    const size_t num_prompts = 1; // You can add more prompts
     const char *prompts[] = {"I don't like to code", "I like tea", "Testing"};
 
     // Variables to store total times for CPU and GPU
