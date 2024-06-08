@@ -103,7 +103,8 @@ BINARY(multiply_tile, *b.dat[i % a.cols];)
 double get_wall_time() {
     struct timeval time;
     gettimeofday(&time, NULL);
-    return (double)time.tv_sec + (double)time.tv_usec * 1e-6;
+    double wall_time = (double)time.tv_sec + (double)time.tv_usec * 1e-6;
+    return wall_time;
 }
 
 // Compute the sum of the rows in a matrix, populating each row with the same sum
@@ -250,11 +251,10 @@ int* tokenize(char* seq, /*INT*/ int* result) {
     return result;
 }
 
-void do_inference(clock_t start, clock_t end, double cpu_time_used, Matrix wpe, Matrix wte, Matrix *weights, int T, char *buf, int *output){
+void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Matrix wte, Matrix *weights, int T, char *buf, int *output){
+    start = get_wall_time();
     num_total_tokens = tokenize(buf, output) - output;
-
     memory_top = memory;
-
     token_processed_upto = 0;
 
     // Loop forever in conversation, to iterate between the human and ml model
@@ -402,7 +402,7 @@ void do_inference(clock_t start, clock_t end, double cpu_time_used, Matrix wpe, 
 
 // Now for the main function that does most of the useful work.
 int main(int tmp, char** argv) {
-    clock_t start, end;
+    double start, end;
     double cpu_time_used;
     start = get_wall_time();
     bool is_set_prompt = false;
@@ -507,9 +507,7 @@ int main(int tmp, char** argv) {
     ///////////////INFERENCE FUNCTION INLINED////////////////////
     /////////////////////////////////////////////////////////////
 
-    if(is_set_prompt) {
-        start = get_wall_time();
-    
+    if(is_set_prompt) {    
         char buf[1000] = {0};
         int T;
         printf("\nHuman: ");
@@ -528,8 +526,6 @@ int main(int tmp, char** argv) {
         do_inference(start, end, cpu_time_used, wpe, wte, weights, T, buf, output);
     } else {
         while (1) {
-            start = get_wall_time();
-
             char buf[1000] = {0};
             int T;
             printf("\nHuman: ");
