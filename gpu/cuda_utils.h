@@ -1,5 +1,6 @@
 #pragma once
 #define UNARYdef(fn) Matrix fn##CUDA(Matrix a, float k);
+#define BINARYdef(fn) Matrix fn##CUDA(Matrix a, Matrix b);
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,6 +26,12 @@ UNARYdef(mat_exp)                   // exponetiate each entry
 UNARYdef(broadcast)  // copy the first column to every column
 UNARYdef(tril)
 UNARYdef(GELU)
+
+BINARYdef(add)       // add two matrices together
+BINARYdef(multiply)  // multiply two matrices together
+BINARYdef(divide)    // divide the first matrix by the second
+BINARYdef(add_tile)
+BINARYdef(multiply_tile)
 
 #ifdef __cplusplus
 }

@@ -8,6 +8,15 @@ make cpu
 
 # Run GPU demo
 make gpu
+
+# Run CPU demo with fixed seed
+make cpu_seed seed=123
+
+# Run GPU demo with fixed seed
+make gpu_seed seed=123
+
+# Run unit tests
+make test
 ```
 
 # Credit

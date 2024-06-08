@@ -156,8 +156,9 @@ extern "C" void transposeCUDA(Matrix a, Matrix out)
         int row = blockIdx.y * blockDim.y + threadIdx.y;               \
         int col = blockIdx.x * blockDim.x + threadIdx.x;               \
         if (row < aRows && col < aCols) {                              \
-            int i = row * aCols + col;                               \
+            int i = row * aCols + col;                                 \
             float b = a[i];                                            \
+            b += 0;                                                    \
             out[i] = opr;                                              \
         }                                                              \
     }                                                                  \
@@ -169,7 +170,7 @@ extern "C" void transposeCUDA(Matrix a, Matrix out)
         size_t sizeA = aRows * aCols * sizeof(float);                  \
         cudaMalloc((void**)&d_a, sizeA);                               \
         cudaMemcpy(d_a, a, sizeA, cudaMemcpyHostToDevice);             \
-        dim3 blockSize(16, 16);                                        \
+        dim3 blockSize(32, 32);                                        \
         dim3 gridSize((aCols + blockSize.x - 1) / blockSize.x,         \
                       (aRows + blockSize.y - 1) / blockSize.y);        \
         fn##Kernel<<<gridSize, blockSize>>>(d_a, aRows, aCols, d_a, k);\
@@ -193,3 +194,45 @@ UNARY(tril, (i / k < i % (int)k) ? 0 : exp(b / 8))
 
 // GELU is the activation function used for transformers
 UNARY(GELU, b / 2 * (1 + tanh(.7978845 * (b + .044715 * b * b * b))))
+
+#define BINARY(fn, opr)                                                                \
+    __global__ void fn##Kernel(float* a, int aRows, int aCols, float* b, float* out) { \
+        int row = blockIdx.y * blockDim.y + threadIdx.y;                               \
+        int col = blockIdx.x * blockDim.x + threadIdx.x;                               \
+        if (row < aRows && col < aCols) {                                              \
+            int i = row * aCols + col;                                                 \
+            a[i] = a[i] opr b[i];                                                      \
+        }                                                                              \
+    }                                                                                  \
+    extern "C" Matrix fn##CUDA(Matrix a, Matrix b) {                                   \
+        float *c_a = a.dat;                                                            \
+        int aRows = a.rows;                                                            \
+        int aCols = a.cols;                                                            \
+        float *c_b = b.dat;                                                            \
+        float *d_a, *d_b;                                                              \
+        size_t size = aRows * aCols * sizeof(float);                                   \
+        cudaMalloc((void**)&d_a, size);                                                \
+        cudaMemcpy(d_a, c_a, size, cudaMemcpyHostToDevice);                            \
+        cudaMalloc((void**)&d_b, size);                                                \
+        cudaMemcpy(d_b, c_b, size, cudaMemcpyHostToDevice);                            \
+        dim3 blockSize(32, 32);                                                        \
+        dim3 gridSize((aCols + blockSize.x - 1) / blockSize.x,                         \
+                      (aRows + blockSize.y - 1) / blockSize.y);                        \
+        fn##Kernel<<<gridSize, blockSize>>>(d_a, aRows, aCols, d_b, d_a);              \
+        cudaMemcpy(c_a, d_a, size, cudaMemcpyDeviceToHost);                            \
+        cudaFree(d_a);                                                                 \
+        cudaFree(d_b);                                                                 \
+        return a;                                                                      \
+    }
+
+BINARY(add, +)       // add two matrices together
+BINARY(multiply, *)  // multiply two matrices together
+BINARY(divide, /)    // divide the first matrix by the second
+
+// We also have some ugly hacks here to implement "tiling"
+// that lets us add or multiply one matrix by the first column of a second
+// To do this tiling, we don't want to operate on b.dat[i], so instead
+// we re-index with what we want and then just stick a ; there to
+// drop the actual b.dat[i]
+BINARY(add_tile, +b[i % aCols];)
+BINARY(multiply_tile, *b[i % aCols];)
