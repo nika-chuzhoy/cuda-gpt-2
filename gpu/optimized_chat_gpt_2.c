@@ -51,8 +51,10 @@ Matrix NewMatrix(int rows, int cols, int reuse) {
 double get_wall_time() {
     struct timeval time;
     gettimeofday(&time, NULL);
-    return (double)time.tv_sec + (double)time.tv_usec * 1e-6;
+    double wall_time = (double)time.tv_sec + (double)time.tv_usec * 1e-6;
+    return wall_time;
 }
+
 
 // Compute the sum of the rows in a matrix, populating each row with the same sum
 Matrix sum(Matrix a) {
@@ -190,11 +192,10 @@ int* tokenize(char* seq, /*INT*/ int* result) {
     return result;
 }
 
-void do_inference(clock_t start, clock_t end, double cpu_time_used, Matrix wpe, Matrix wte, Matrix *weights, int T, char *buf, int *output){
+void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Matrix wte, Matrix *weights, int T, char *buf, int *output){
+    start = get_wall_time();
     num_total_tokens = tokenize(buf, output) - output;
-
     memory_top = memory;
-
     token_processed_upto = 0;
 
     while (1) {  // Brian loop
@@ -327,8 +328,8 @@ void do_inference(clock_t start, clock_t end, double cpu_time_used, Matrix wpe, 
 
         // If it's a newline this is the end of the converstaion
         if (bpe[tmp * 999] == 10) {
-            end = clock();
-            cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+            end = get_wall_time();
+            cpu_time_used = ((double)(end - start));
             printf("\n\n----Seconds to respond: %f----\n", cpu_time_used);
             break;
         }
@@ -341,9 +342,9 @@ void do_inference(clock_t start, clock_t end, double cpu_time_used, Matrix wpe, 
 
 // Now for the main function that does most of the useful work.
 int main(int tmp, char** argv) {
-    clock_t start, end;
+    double start, end;
     double cpu_time_used;
-    start = clock();
+    start = get_wall_time();
     bool is_set_prompt = false;
     char *set_prompt;
     int seed = time(NULL);
@@ -438,8 +439,8 @@ int main(int tmp, char** argv) {
     Matrix wpe = read_matrix(1024, DIM),
         wte = transpose(read_matrix(5e4, DIM));
 
-    end = clock();
-    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+    end = get_wall_time();
+    cpu_time_used = ((double)(end - start));
     printf("\n---- Seconds to load: %f ----\t\n", cpu_time_used);
 
     /////////////////////////////////////////////////////////////
@@ -447,7 +448,7 @@ int main(int tmp, char** argv) {
     /////////////////////////////////////////////////////////////
 
     if(is_set_prompt) {
-        start = clock();
+        start = get_wall_time();
 
         char buf[1000] = {0};
         int T;
@@ -467,7 +468,7 @@ int main(int tmp, char** argv) {
         do_inference(start, end, cpu_time_used, wpe, wte, weights, T, buf, output);
     } else {
         while (1) {  // Nika loop
-            start = clock();
+            start = get_wall_time();
 
             char buf[1000] = {0};
             int T;
