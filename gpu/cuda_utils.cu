@@ -71,6 +71,7 @@ __global__ void matMulCudaKernelOptimized(float* A, float* B, float* C, int aRow
             Bs[threadIdx.y][threadIdx.x] = 0.0;
         }
 
+        // Prevent overwrite to shmem
         __syncthreads();
 
         for (int k = 0; k < TILE_SIZE; k++) {
