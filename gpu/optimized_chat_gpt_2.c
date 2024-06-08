@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <stdbool.h>
 #include"cuda_utils.h"
 
 int DIM, NLAYER, NHEAD;
@@ -230,16 +231,174 @@ int* tokenize(char* seq, /*INT*/ int* result) {
     return result;
 }
 
+void do_inference(clock_t start, clock_t end, double cpu_time_used, Matrix wpe, Matrix wte, Matrix *weights, int T, char *buf, int *output){
+    num_total_tokens = tokenize(buf, output) - output;
+
+    memory_top = memory;
+
+    token_processed_upto = 0;
+
+    while (1) {  // Brian loop
+        // Reset the memory to the top of the original value
+        memory = memory_top;
+
+        // Compute the context window size as the next largest multiple of 32
+        T = num_total_tokens + 32 - num_total_tokens % 32;
+        // If the number is 0 mod 32, then we need to recompute everything bottom up
+        token_processed_upto *= !!(num_total_tokens % 32);
+
+        // This is the line we're going to process.
+        Matrix line = NewMatrix(T, DIM, 1);
+
+        // Start by loading the embedding weights and adding the position encoding.
+        LOOP(i, num_total_tokens) {
+            LOOP(j, DIM) {
+                line.dat[i * DIM + j] = wte.dat[output[i] * DIM + j] + wpe.dat[j * 1024 + i];
+            }
+        }
+
+        // Start the transformer neural network inference.
+        LOOP(i, NLAYER) {  // Lynn loop
+            // The layers on disk are stored by sorting alphabetically,
+            // because tensorflow makes no sense. We need to convert this to
+            // the correct order. For example, if there are 12 layers, we would
+            // have them on disk in order: 0 1 10 11 2 3 4 5 6 7 8 9
+            // which means we permute by the inverse: 0 1 4 5 6 7 8 9 10 11 2 3
+            int permute;
+            tmp = 0;
+            LOOP(j, 10) {
+                if (j == i) {
+                    permute = tmp;
+                }
+                tmp++;
+                LOOP(k, 10 * (j > 0)) {
+                    if (j * 10 + k < NLAYER && tmp++ && i == j * 10 + k) {
+                        permute = tmp;
+                    }
+                }
+            }
+
+            // This layer's weights are at this offset
+            layer_weights = weights + 12 * permute;
+
+            // Compute the keys, queries, and values all at once with a big multiply
+            Matrix qkv = transpose(slice(Linear(LayerNorm(line, 4), 0), 0, T * 3, DIM));
+
+            // Make space for the output of the computation
+            Matrix result = NewMatrix(DIM, T, 1);
+
+            LOOP(k, NHEAD) {
+                // Split the qkv into each of the heads
+                Matrix merge = transpose(slice(qkv, k * 3, 64 * T, 3)),
+                    // perform the product of the queries and keys and then exponentiate
+                    a = tril(matmul_t_fast(transpose(slice(merge, 0, 64, T)),
+                                        transpose(slice(merge, T, 64, T))),
+                            T),
+                    // finally multiply the softmax output (a/sum(a)) with the values matrix
+                    out = transpose(matmul_t_fast(divide(a, sum(a)), slice(merge, T * 2, 64, T)));
+                // and copy the output to the proper location in the result matrix
+                memcpy(result.dat + 64 * T * k, out.dat, 64 * T * 4);
+            }
+
+            // Residual connection
+            line = add(line, Linear(transpose(result), 2));
+
+            // Activation function and residual connection
+            line = add(line, Linear(GELU(Linear(LayerNorm(line, 6), 8), 0), 10));
+        }
+
+        // Reset layer weights so we can do the last layer norm
+        layer_weights = weights;
+        line = LayerNorm(line, 12 * NLAYER);
+
+        // And finally compute the output logits
+        token_processed_upto = 0;
+        int tmp = num_total_tokens;
+        num_total_tokens = 1;
+        Matrix result = matmul_t_fast(transpose(slice(line, tmp - 1, DIM, 1)), wte);
+        token_processed_upto = num_total_tokens = tmp;
+
+        // Calculate softmax probabilities
+        int size = 5e4;
+        float temperature = 0.7;
+        float* logits = divide_const(result, temperature).dat;
+        double max = logits[0];
+        for (int i = 1; i < size; i++) {
+            if (logits[i] > max) {
+                max = logits[i];
+            }
+        }
+
+        double sum = 0.0;
+        double probs[size];
+        for (int i = 0; i < size; i++) {
+            probs[i] = exp(logits[i] - max);
+            sum += probs[i];
+        }
+
+        for (int i = 0; i < size; i++) {
+            probs[i] /= sum;
+        }
+
+        // Weighted random sampling
+        tmp = 0;
+        float cumulative[size];
+        cumulative[0] = probs[0];
+        for (int i = 1; i < size; i++) {
+            cumulative[i] = cumulative[i - 1] + probs[i];
+        }
+
+        float r = ((float)rand() / RAND_MAX) * cumulative[size - 1];
+
+        for (int i = 0; i < size; i++) {
+            if (r < cumulative[i]) {
+                tmp = i;
+                break;
+            }
+        }
+
+        // If the history is too long, then purge by half
+        if (num_total_tokens == zz) {
+            memcpy(output, output + zz / 2, tmp * 2);
+            num_total_tokens -= zz / 2;
+            token_processed_upto = 0;
+        }
+        // Write it to the history buffer
+        output[num_total_tokens++] = tmp;
+
+        // If it's a newline this is the end of the converstaion
+        if (bpe[tmp * 999] == 10) {
+            end = clock();
+            cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+            printf("\n\n----Seconds to respond: %f----\n", cpu_time_used);
+            break;
+        }
+
+        // Otherwise print it and keep generating along
+        printf("%s", bpe + tmp * 999);
+        fflush(stdout);
+    }
+}
+
 // Now for the main function that does most of the useful work.
 int main(int tmp, char** argv) {
     clock_t start, end;
     double cpu_time_used;
     start = clock();
+    bool is_set_prompt = false;
+    char *set_prompt;
+    bool is_set_seed = false;
+    int seed;
 
     //  Set random seed, for testing purposes
-    if (tmp == 5) {
-        int seed = atoi(argv[4]);
-        srand(seed);
+    if (tmp >= 5) {
+        seed = atoi(argv[4]);
+        is_set_seed = true;
+    }
+    //  If this is a set-prompt run
+    if (tmp >= 6) {
+        set_prompt = argv[5];
+        is_set_prompt = true;
     }
 
     // Initially let's figure out the right hyperparameters for this model
@@ -325,20 +484,17 @@ int main(int tmp, char** argv) {
     ///////////////INFERENCE FUNCTION INLINED////////////////////
     /////////////////////////////////////////////////////////////
 
-    while (1) {  // Nika loop
+    if(is_set_prompt) {
         start = clock();
+        srand(seed);
 
         char buf[1000] = {0};
         int T;
         printf("\nHuman: ");
+        printf("%s\n", set_prompt);
         fflush(stdout);
 
-        char* fgets_result = fgets(buf, 1000, stdin);
-        if (fgets_result == NULL) {
-            // Handle error, e.g., print an error message and exit
-            perror("Error reading input");
-            exit(EXIT_FAILURE);
-        }
+        strcpy(buf, set_prompt);
 
         // This is going to store our prompt
         int output[2 * zz];
@@ -346,151 +502,33 @@ int main(int tmp, char** argv) {
 
         printf("AI: ");
         strcat(buf, "\n\n");
-        num_total_tokens = tokenize(buf, output) - output;
 
-        memory_top = memory;
+        do_inference(start, end, cpu_time_used, wpe, wte, weights, T, buf, output);
+    } else {
+        while (1) {  // Nika loop
+            start = clock();
+            srand(seed);
 
-        token_processed_upto = 0;
-
-        while (1) {  // Brian loop
-            // Reset the memory to the top of the original value
-            memory = memory_top;
-
-            // Compute the context window size as the next largest multiple of 32
-            T = num_total_tokens + 32 - num_total_tokens % 32;
-            // If the number is 0 mod 32, then we need to recompute everything bottom up
-            token_processed_upto *= !!(num_total_tokens % 32);
-
-            // This is the line we're going to process.
-            Matrix line = NewMatrix(T, DIM, 1);
-
-            // Start by loading the embedding weights and adding the position encoding.
-            LOOP(i, num_total_tokens) {
-                LOOP(j, DIM) {
-                    line.dat[i * DIM + j] = wte.dat[output[i] * DIM + j] + wpe.dat[j * 1024 + i];
-                }
-            }
-
-            // Start the transformer neural network inference.
-            LOOP(i, NLAYER) {  // Lynn loop
-                // The layers on disk are stored by sorting alphabetically,
-                // because tensorflow makes no sense. We need to convert this to
-                // the correct order. For example, if there are 12 layers, we would
-                // have them on disk in order: 0 1 10 11 2 3 4 5 6 7 8 9
-                // which means we permute by the inverse: 0 1 4 5 6 7 8 9 10 11 2 3
-                int permute;
-                tmp = 0;
-                LOOP(j, 10) {
-                    if (j == i) {
-                        permute = tmp;
-                    }
-                    tmp++;
-                    LOOP(k, 10 * (j > 0)) {
-                        if (j * 10 + k < NLAYER && tmp++ && i == j * 10 + k) {
-                            permute = tmp;
-                        }
-                    }
-                }
-
-                // This layer's weights are at this offset
-                layer_weights = weights + 12 * permute;
-
-                // Compute the keys, queries, and values all at once with a big multiply
-                Matrix qkv = transpose(slice(Linear(LayerNorm(line, 4), 0), 0, T * 3, DIM));
-
-                // Make space for the output of the computation
-                Matrix result = NewMatrix(DIM, T, 1);
-
-                LOOP(k, NHEAD) {
-                    // Split the qkv into each of the heads
-                    Matrix merge = transpose(slice(qkv, k * 3, 64 * T, 3)),
-                        // perform the product of the queries and keys and then exponentiate
-                        a = tril(matmul_t_fast(transpose(slice(merge, 0, 64, T)),
-                                            transpose(slice(merge, T, 64, T))),
-                                T),
-                        // finally multiply the softmax output (a/sum(a)) with the values matrix
-                        out = transpose(matmul_t_fast(divide(a, sum(a)), slice(merge, T * 2, 64, T)));
-                    // and copy the output to the proper location in the result matrix
-                    memcpy(result.dat + 64 * T * k, out.dat, 64 * T * 4);
-                }
-
-                // Residual connection
-                line = add(line, Linear(transpose(result), 2));
-
-                // Activation function and residual connection
-                line = add(line, Linear(GELU(Linear(LayerNorm(line, 6), 8), 0), 10));
-            }
-
-            // Reset layer weights so we can do the last layer norm
-            layer_weights = weights;
-            line = LayerNorm(line, 12 * NLAYER);
-
-            // And finally compute the output logits
-            token_processed_upto = 0;
-            int tmp = num_total_tokens;
-            num_total_tokens = 1;
-            Matrix result = matmul_t_fast(transpose(slice(line, tmp - 1, DIM, 1)), wte);
-            token_processed_upto = num_total_tokens = tmp;
-
-            // Calculate softmax probabilities
-            int size = 5e4;
-            float temperature = 0.7;
-            float* logits = divide_const(result, temperature).dat;
-            double max = logits[0];
-            for (int i = 1; i < size; i++) {
-                if (logits[i] > max) {
-                    max = logits[i];
-                }
-            }
-
-            double sum = 0.0;
-            double probs[size];
-            for (int i = 0; i < size; i++) {
-                probs[i] = exp(logits[i] - max);
-                sum += probs[i];
-            }
-
-            for (int i = 0; i < size; i++) {
-                probs[i] /= sum;
-            }
-
-            // Weighted random sampling
-            tmp = 0;
-            float cumulative[size];
-            cumulative[0] = probs[0];
-            for (int i = 1; i < size; i++) {
-                cumulative[i] = cumulative[i - 1] + probs[i];
-            }
-
-            float r = ((float)rand() / RAND_MAX) * cumulative[size - 1];
-
-            for (int i = 0; i < size; i++) {
-                if (r < cumulative[i]) {
-                    tmp = i;
-                    break;
-                }
-            }
-
-            // If the history is too long, then purge by half
-            if (num_total_tokens == zz) {
-                memcpy(output, output + zz / 2, tmp * 2);
-                num_total_tokens -= zz / 2;
-                token_processed_upto = 0;
-            }
-            // Write it to the history buffer
-            output[num_total_tokens++] = tmp;
-
-            // If it's a newline this is the end of the converstaion
-            if (bpe[tmp * 999] == 10) {
-                end = clock();
-                cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-                printf("\n\n----Seconds to respond: %f----\n", cpu_time_used);
-                break;
-            }
-
-            // Otherwise print it and keep generating along
-            printf("%s", bpe + tmp * 999);
+            char buf[1000] = {0};
+            int T;
+            printf("\nHuman: ");
             fflush(stdout);
+
+            char* fgets_result = fgets(buf, 1000, stdin);
+            if (fgets_result == NULL) {
+                // Handle error, e.g., print an error message and exit
+                perror("Error reading input");
+                exit(EXIT_FAILURE);
+            }
+
+            // This is going to store our prompt
+            int output[2 * zz];
+            num_total_tokens = 0;
+
+            printf("AI: ");
+            strcat(buf, "\n\n");
+
+            do_inference(start, end, cpu_time_used, wpe, wte, weights, T, buf, output);
         }
     }
 }
