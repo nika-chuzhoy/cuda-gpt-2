@@ -307,25 +307,35 @@ void sumCPU(float *input, float *output, int rows, int cols) {
     broadcast(out, 0);
 }
 
-void sumGPU(float *input, float *output, int rows, int cols) {
-    for (size_t i = 0; i < rows * cols; i++) {
-        output[(i/cols)*cols] += input[i];
-    }
-    Matrix out = {.dat = output, .rows = rows, .cols = cols};
-    broadcastCUDA(out, 0);
-}
+// void sumGPU(float *input, float *output, int rows, int cols) {
+//     for (size_t i = 0; i < rows * cols; i++) {
+//         output[(i/cols)*cols] += input[i];
+//     }
+//     Matrix out = {.dat = output, .rows = rows, .cols = cols};
+//     broadcastCUDA(out, 0);
+// }
 
 void cudaSumTest() {
     std::cout << "------------------------------------------" << std::endl;
     std::cout << "Test Sum RUNNING." << std::endl;
-    const int rows = 770;
-    const int cols = 800;
+    const int rows = 3000;
+    const int cols = 8000;
 
     float *input_cpu = generateRandomMatrix(rows, cols);
     float *output_cpu = (float *) malloc(sizeof(float) * rows * cols);
 
     float *input_gpu = generateRandomMatrix(rows, cols);
     float *output_gpu = (float *) malloc(sizeof(float) * rows * cols);
+
+    Matrix mat_in;
+    mat_in.dat = input_gpu;
+    mat_in.rows = rows;
+    mat_in.cols = cols;
+
+    Matrix mat_out;
+    mat_out.dat = output_gpu;
+    mat_out.rows = rows;
+    mat_out.cols = cols;
 
     cudaEvent_t start_cpu, stop_cpu;
     cudaEventCreate(&start_cpu);
@@ -344,7 +354,8 @@ void cudaSumTest() {
     cudaEventCreate(&stop_gpu);
     cudaEventRecord(start_gpu);
 
-    sumGPU(input_gpu, output_gpu, rows, cols);
+    sumCUDA(mat_in, mat_out);
+    broadcast(mat_out, 0);
 
     cudaEventRecord(stop_gpu);
     cudaEventSynchronize(stop_gpu);
@@ -357,8 +368,8 @@ void cudaSumTest() {
     std::cout << std::endl << "Speedup factor: " <<
         cpu_time_milliseconds / gpu_time_milliseconds << std::endl << std::endl;
 
-    // printMatrix(h_output_cpu, cols, rows);
-    // printMatrix(mat.dat, cols, rows);
+    printMatrix(output_gpu, rows, cols);
+    // printMatrix(output_cpu, rows, cols);
 
     if (compareMatrices(output_cpu, output_gpu, cols, rows)) {
         std::cout << "Test Sum PASSED." << std::endl;
@@ -571,23 +582,23 @@ BINARYtest(multiply_tile)
 
 int main() {
 
-    matMulCUDATest();
-    matMulCUDATest2();
-    matMulCublasTest();
-    cudaTransposeTest();
-    cudadivide_constTest();
-    cudaadd_constTest();   
-    cudamat_isqrtTest(); 
-    cudamat_expTest();                       
-    cudabroadcastTest();
-    cudatrilTest();
-    cudaGELUTest();
-    cudaaddTest();
-    cudamultiplyTest();
-    cudadivideTest();
-    cudaadd_tileTest();
-    cudamultiply_tileTest();
     cudaSumTest();
+    // matMulCUDATest();
+    // matMulCUDATest2();
+    // matMulCublasTest();
+    // cudaTransposeTest();
+    // cudadivide_constTest();
+    // cudaadd_constTest();   
+    // cudamat_isqrtTest(); 
+    // cudamat_expTest();                       
+    // cudabroadcastTest();
+    // cudatrilTest();
+    // cudaGELUTest();
+    // cudaaddTest();
+    // cudamultiplyTest();
+    // cudadivideTest();
+    // cudaadd_tileTest();
+    // cudamultiply_tileTest();
 
     return 0;
 }

@@ -153,31 +153,32 @@ extern "C" void matMulCublas(float* a, int aRows, int aCols, float* b, int bRows
 
 // Brodcasts sum of each row across rows
 __global__ void sumCudaKernel(float* input, float* output, int rows, int cols) {
-    int blockRow = blockIdx.x * blockDim.x;
-    extern __shared__ float sharedSum[]; // Determine size at runtime
+    extern __shared__ float sharedSum[];
 
-    for (int row = blockRow + threadIdx.x; row < rows; row += blockDim.x * gridDim.x) {
+    for (int row = blockIdx.x; row < rows; row += gridDim.x) {
         float sum = 0;
-        for (int col = threadIdx.y; col < cols; col += blockDim.y) {
+        for (int col = threadIdx.x; col < cols; col += blockDim.x) {
             sum += input[row * cols + col];
         }
-        sharedSum[threadIdx.y] = sum;
+        sharedSum[threadIdx.x] = sum;
 
-        __syncthreads(); 
+        __syncthreads();
 
-        if (threadIdx.y == 0) {
+        // Reduction in shared memory
+        if (threadIdx.x == 0) {
             float totalSum = 0;
-            for (int i = 0; i < blockDim.y; i++) {
+            for (int i = 0; i < blockDim.x; i++) {
                 totalSum += sharedSum[i];
             }
-            output[row] = totalSum;
+            output[row * cols] = totalSum;
         }
         __syncthreads();
     }
 }
 
 
-extern "C" void sumCuda(Matrix a, Matrix out)
+
+extern "C" void sumCUDA(Matrix a, Matrix out)
 {
     float *d_input, *d_output;
     size_t size = a.rows * a.cols * sizeof(float);
@@ -187,12 +188,12 @@ extern "C" void sumCuda(Matrix a, Matrix out)
 
     cudaMemcpy(d_input, a.dat, size, cudaMemcpyHostToDevice);
 
-    dim3 dimBlock(1, 256);
+    dim3 dimBlock(256, 1);
     dim3 dimGrid(128, 1);
-    int sharedMemSize = blockSize.y * sizeof(float);
+;
+    int sharedMemSize = dimBlock.x * sizeof(float);
 
     sumCudaKernel<<<dimGrid, dimBlock, sharedMemSize>>>(d_input, d_output, a.rows, a.cols);
-    broadcastCUDA(out, 0);
 
     cudaMemcpy(out.dat, d_output, size, cudaMemcpyDeviceToHost);
 
