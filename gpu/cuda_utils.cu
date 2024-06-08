@@ -303,5 +303,5 @@ BINARY(divide, /)    // divide the first matrix by the second
 // To do this tiling, we don't want to operate on b.dat[i], so instead
 // we re-index with what we want and then just stick a ; there to
 // drop the actual b.dat[i]
-BINARY(add_tile, +b[i % aCols];)
-BINARY(multiply_tile, *b[i % aCols];)
+BINARY(add_tile, +b[i % aCols];(void))
+BINARY(multiply_tile, *b[i % aCols];(void))
