@@ -404,8 +404,13 @@ int main(int tmp, char** argv) {
     //  If this is a set-prompt run
     if (tmp >= 6) {
         set_prompt = argv[5];
-        is_set_prompt = true;
+        if(strcmp(set_prompt, "") != 0){
+            is_set_prompt = true;
+        }
     }
+
+    printf("Random seed %d\n", seed);
+    srand(seed);
 
     // Initially let's figure out the right hyperparameters for this model
     // argv[1] stores the name of the model we're loading
@@ -492,7 +497,6 @@ int main(int tmp, char** argv) {
 
     if(is_set_prompt) {
         start = clock();
-        srand(seed);
 
         char buf[1000] = {0};
         int T;
@@ -513,7 +517,6 @@ int main(int tmp, char** argv) {
     } else {
         while (1) {  // Nika loop
             start = clock();
-            srand(seed);
 
             char buf[1000] = {0};
             int T;
