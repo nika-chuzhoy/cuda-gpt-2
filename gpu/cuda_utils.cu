@@ -3,8 +3,10 @@
 #include <cublas_v2.h>
 #include "cuda_utils.h"
 
+#define CEIL_DIV(a, b) (((a) + (b) - 1) / (b))
+
 // CUDA kernel for matrix multiplication with A and transpose(B)
-__global__ void matMulCudaKernel(float* A, float* B, float* C, int aRows, int aCols, int bRows) {
+__global__ void matMulCudaKernelNaive(float* A, float* B, float* C, int aRows, int aCols, int bRows) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -14,6 +16,70 @@ __global__ void matMulCudaKernel(float* A, float* B, float* C, int aRows, int aC
             // B is accessed in transposed manner
             value += A[row * aCols + k] * B[col * aCols + k];
         }
+        C[row * bRows + col] = value;
+    }
+}
+
+extern "C" void matMulCUDANaive(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
+    float *d_A, *d_B, *d_C;
+    size_t sizeA = aRows * aCols * sizeof(float);
+    size_t sizeB = bRows * bCols * sizeof(float);
+    size_t sizeC = aRows * bRows * sizeof(float);
+
+    cudaMalloc((void**)&d_A, sizeA);
+    cudaMalloc((void**)&d_B, sizeB);
+    cudaMalloc((void**)&d_C, sizeC);
+
+    cudaMemcpy(d_A, a, sizeA, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, b, sizeB, cudaMemcpyHostToDevice);
+
+    // Cuda Kernel
+    dim3 dimBlock(32, 32);
+    dim3 dimGrid(CEIL_DIV(bRows, 32), CEIL_DIV(aRows, 32));
+
+    matMulCudaKernelNaive<<<dimGrid, dimBlock>>>(d_A, d_B, d_C, aRows, aCols, bRows);
+
+    cudaMemcpy(out, d_C, sizeC, cudaMemcpyDeviceToHost);
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+}
+
+// CUDA kernel for matrix multiplication with A and transpose(B)
+__global__ void matMulCudaKernelOptimized(float* A, float* B, float* C, int aRows, int aCols, int bRows) {
+    const int TILE_SIZE = 32;
+
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    __shared__ float As[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+
+    float value = 0;
+    // Loop over tiles
+    for (int m = 0; m < (aCols - 1) / TILE_SIZE + 1; m++) {
+        // Load section of A and B into memory
+        if (m * TILE_SIZE + threadIdx.x < aCols && row < aRows) {
+            As[threadIdx.y][threadIdx.x] = A[row * aCols + m * TILE_SIZE + threadIdx.x];
+        } else {
+            // Ensure sum not affected
+            As[threadIdx.y][threadIdx.x] = 0.0;
+        }
+        if (m * TILE_SIZE + threadIdx.y < aCols && col < bRows) {
+            Bs[threadIdx.y][threadIdx.x] = B[col * aCols + m * TILE_SIZE + threadIdx.y];
+        } else {
+            Bs[threadIdx.y][threadIdx.x] = 0.0;
+        }
+
+        __syncthreads();
+
+        for (int k = 0; k < TILE_SIZE; k++) {
+            value += As[threadIdx.y][k] * Bs[k][threadIdx.x];
+        }
+        __syncthreads();
+    }
+
+    if (row < aRows && col < bRows) {
         C[row * bRows + col] = value;
     }
 }
@@ -33,8 +99,9 @@ extern "C" void matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows, 
 
     // Cuda Kernel
     dim3 dimBlock(32, 32);
-    dim3 dimGrid((bRows + dimBlock.x - 1) / dimBlock.x, (aRows + dimBlock.y - 1) / dimBlock.y);
-    matMulCudaKernel<<<dimGrid, dimBlock>>>(d_A, d_B, d_C, aRows, aCols, bRows);
+    dim3 dimGrid(CEIL_DIV(bRows, 32), CEIL_DIV(aRows, 32));
+
+    matMulCudaKernelOptimized<<<dimGrid, dimBlock>>>(d_A, d_B, d_C, aRows, aCols, bRows);
 
     cudaMemcpy(out, d_C, sizeC, cudaMemcpyDeviceToHost);
     cudaFree(d_A);
@@ -140,7 +207,8 @@ extern "C" void transposeCUDA(Matrix a, Matrix out)
     const int TILE_DIM = 64;
 
     dim3 dimBlock(TILE_DIM, TILE_DIM / 4); // 64x16
-    dim3 dimGrid((a.cols + TILE_DIM - 1) / TILE_DIM, (a.rows + TILE_DIM - 1) / TILE_DIM);
+    dim3 dimGrid(CEIL_DIV(a.cols, TILE_DIM), CEIL_DIV(a.rows, TILE_DIM));
+    
 
     transposeKernel<<<dimGrid, dimBlock>>>(d_input, d_output, a.rows, a.cols);
 

@@ -11,6 +11,8 @@ typedef struct {
     int rows, cols;
 } Matrix;
 
+extern "C" void matMulCUDANaive(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out);
+
 void matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out);
 
 void matMulCublas(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out);

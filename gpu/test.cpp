@@ -177,6 +177,67 @@ void matMulCUDATest() {
     free(c_output_cpu);
 }
 
+void matMulCUDATest2() {
+    std::cout << "------------------------------------------" << std::endl;
+    std::cout << "Test CUDA matmul 2 RUNNING." << std::endl;
+
+    const int aRows = 500;
+    const int aCols = 300;
+
+    const int bRows = 400;
+    const int bCols = 300;
+
+    float *a_input = generateRandomMatrix(aRows, aCols);
+    float *b_input = generateRandomMatrix(bRows, bCols);
+
+    float *c_output_gpu = (float*) malloc(aRows * bRows * sizeof(float));
+    float *c_output_cpu = (float*) malloc(aRows * bRows * sizeof(float));
+
+    cudaEvent_t start_cpu, stop_cpu;
+    cudaEventCreate(&start_cpu);
+    cudaEventCreate(&stop_cpu);
+    cudaEventRecord(start_cpu);
+
+    matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_cpu);
+
+    cudaEventRecord(stop_cpu);
+    cudaEventSynchronize(stop_cpu);
+    float cpu_time_milliseconds;
+    cudaEventElapsedTime(&cpu_time_milliseconds, start_cpu, stop_cpu);
+
+    cudaEvent_t start_gpu, stop_gpu;
+    cudaEventCreate(&start_gpu);
+    cudaEventCreate(&stop_gpu);
+    cudaEventRecord(start_gpu);
+
+    matMulCUDANaive(a_input, aRows, aCols, b_input, bRows, bCols, c_output_gpu);
+
+    cudaEventRecord(stop_gpu);
+    cudaEventSynchronize(stop_gpu);
+    float gpu_time_milliseconds;
+    cudaEventElapsedTime(&gpu_time_milliseconds, start_gpu, stop_gpu);
+
+    std::cout << std::endl;
+    std::cout << "Naive Cuda time: " << gpu_time_milliseconds << " milliseconds" << std::endl;
+    std::cout << "Optimized CUDA time: " << cpu_time_milliseconds << " milliseconds" << std::endl;
+    std::cout << std::endl << "Speedup factor: " <<
+        gpu_time_milliseconds / cpu_time_milliseconds << std::endl << std::endl;
+
+    // printMatrix(c_output_gpu, aRows, bRows);
+    // printMatrix(c_output_cpu, aRows, bRows);
+
+    if (compareMatrices(c_output_gpu, c_output_cpu, aRows, bRows)) {
+        std::cout << "Test Cuda matmul 2 PASSED." << std::endl;
+    } else {
+        std::cout << "Test Cuda matmul 2 FAILED." << std::endl;
+    }
+
+    free(a_input);
+    free(b_input);
+    free(c_output_gpu);
+    free(c_output_cpu);
+}
+
 void matMulCublasTest() {
     std::cout << "------------------------------------------" << std::endl;
     std::cout << "Test Cublas matmul RUNNING." << std::endl;
@@ -438,6 +499,7 @@ BINARYtest(multiply_tile)
 int main() {
 
     matMulCUDATest();
+    matMulCUDATest2();
     matMulCublasTest();
     cudaTransposeTest();
     cudadivide_constTest();
