@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/time.h>
 #include <stdbool.h>
 #include"cuda_utils.h"
 
@@ -94,6 +95,13 @@ BINARY(subtract, -)
 // drop the actual b.dat[i]
 BINARY(add_tile, +b.dat[i % a.cols];)
 BINARY(multiply_tile, *b.dat[i % a.cols];)
+
+// Helper function for timing
+double get_wall_time() {
+    struct timeval time;
+    gettimeofday(&time, NULL);
+    return (double)time.tv_sec + (double)time.tv_usec * 1e-6;
+}
 
 // Compute the sum of the rows in a matrix, populating each row with the same sum
 Matrix sum(Matrix a) {
@@ -387,13 +395,11 @@ int main(int tmp, char** argv) {
     start = clock();
     bool is_set_prompt = false;
     char *set_prompt;
-    bool is_set_seed = false;
-    int seed;
+    int seed = time(NULL);
 
     //  Set random seed, for testing purposes
     if (tmp >= 5) {
         seed = atoi(argv[4]);
-        is_set_seed = true;
     }
     //  If this is a set-prompt run
     if (tmp >= 6) {
