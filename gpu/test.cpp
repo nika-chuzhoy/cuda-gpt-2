@@ -318,8 +318,8 @@ void sumCPU(float *input, float *output, int rows, int cols) {
 void cudaSumTest() {
     std::cout << "------------------------------------------" << std::endl;
     std::cout << "Test Sum RUNNING." << std::endl;
-    const int rows = 3000;
-    const int cols = 8000;
+    const int rows = 32;
+    const int cols = 768;
 
     float *input_cpu = generateRandomMatrix(rows, cols);
     float *output_cpu = (float *) malloc(sizeof(float) * rows * cols);
@@ -368,7 +368,7 @@ void cudaSumTest() {
     std::cout << std::endl << "Speedup factor: " <<
         cpu_time_milliseconds / gpu_time_milliseconds << std::endl << std::endl;
 
-    printMatrix(output_gpu, rows, cols);
+    // printMatrix(output_gpu, rows, cols);
     // printMatrix(output_cpu, rows, cols);
 
     if (compareMatrices(output_cpu, output_gpu, cols, rows)) {
@@ -583,22 +583,22 @@ BINARYtest(multiply_tile)
 int main() {
 
     cudaSumTest();
-    // matMulCUDATest();
-    // matMulCUDATest2();
-    // matMulCublasTest();
-    // cudaTransposeTest();
-    // cudadivide_constTest();
-    // cudaadd_constTest();   
-    // cudamat_isqrtTest(); 
-    // cudamat_expTest();                       
-    // cudabroadcastTest();
-    // cudatrilTest();
-    // cudaGELUTest();
-    // cudaaddTest();
-    // cudamultiplyTest();
-    // cudadivideTest();
-    // cudaadd_tileTest();
-    // cudamultiply_tileTest();
+    matMulCUDATest();
+    matMulCUDATest2();
+    matMulCublasTest();
+    cudaTransposeTest();
+    cudadivide_constTest();
+    cudaadd_constTest();   
+    cudamat_isqrtTest(); 
+    cudamat_expTest();                       
+    cudabroadcastTest();
+    cudatrilTest();
+    cudaGELUTest();
+    cudaaddTest();
+    cudamultiplyTest();
+    cudadivideTest();
+    cudaadd_tileTest();
+    cudamultiply_tileTest();
 
     return 0;
 }

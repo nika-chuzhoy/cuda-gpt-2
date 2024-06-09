@@ -55,15 +55,10 @@ double get_wall_time() {
     return wall_time;
 }
 
-
 // Compute the sum of the rows in a matrix, populating each row with the same sum
 Matrix sum(Matrix a) {
     Matrix out = NewMatrix(a.rows, a.cols, 1);
-
-    LOOP(i, a.rows * a.cols) {
-        out.dat[(i / a.cols) * a.cols] += a.dat[i];
-    }
-
+    sumCUDA(a, out);
     broadcastCUDA(out, 0);
     return out;
 }
@@ -75,31 +70,9 @@ Matrix transpose(Matrix a) {
     return out;
 }
 
-// Efficient incremental matrix multiplication.
-// We make the following optimizations:
-// 1. Instead of multiplying A by B, we do A by transpose(B)
-//    This keeps the reads out of the B matrix in sequential order
-//    which helps cache efficiency
-// 2. Instaed of performing the product all at once, we block it
-//    into 4x4 inner computations which again is much more cache efficient
-// 3. If the fast flag is defined, we use OMP to parallelize across threads
-// 4. We re-use computation from prior runs, and only fill in the
-//    *new* rows that weren't populated the prior run through the model
-void printMatrix(Matrix m) {
-    for (int i = 0; i < m.rows; i++) {
-        for (int j = 0; j < m.cols; j++) {
-            printf("%f ", m.dat[i * m.cols + j]);
-        }
-        printf("\n");
-    }
-}
-
 Matrix matmul_t_fast(Matrix a, Matrix b) {
   Matrix out = NewMatrix(a.rows, b.rows, !token_processed_upto);
-
-  // Use the CUDA matrix multiplication function
   matMulCUDA(a.dat + token_processed_upto * a.cols, num_total_tokens - token_processed_upto, a.cols, b.dat, b.rows, b.cols, out.dat + token_processed_upto * b.rows);
-
   return addCUDA(NewMatrix(out.rows, out.cols, 1), out);
 }
 
@@ -115,7 +88,6 @@ Matrix LayerNorm(Matrix a, int i) {
     Matrix b = addCUDA(a, divide_constCUDA(sum(a), -a.cols));
     Matrix k = divide_constCUDA(sum(multiplyCUDA(addCUDA(NewMatrix(b.rows, b.cols, 1), b), b)), b.cols - 1);  // todo can remove -1
     Matrix out = add_tileCUDA(multiply_tileCUDA(multiplyCUDA(addCUDA(NewMatrix(b.rows, b.cols, 1), b), mat_isqrtCUDA(add_constCUDA(k, 1e-5), 0)), layer_weights[i + 1]), layer_weights[i]);
-
     return out;
 }
 
