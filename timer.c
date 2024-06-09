@@ -7,6 +7,7 @@ const size_t seed = 123;
 float time(const char *prompt, char *type) {
     FILE *fp;
     char output[1024]; // Buffer to store the output
+    char response[1024]; // AI response
     double timing;
 
     // Assemble the prompt
@@ -29,6 +30,14 @@ float time(const char *prompt, char *type) {
 
     // Read the output of the command until the end
     while (fgets(output, sizeof(output), fp) != NULL) {
+        // Get and print the AI response
+        //printf(output);
+        //printf("\nCHUNK\n");
+        char *ai_response = strstr(output, "AI: ");
+        if (ai_response != NULL) {
+            strcpy(response, ai_response + 4); // Copy the AI response, skipping "AI: "
+            printf("%s response: %s", type, response);
+        }
         // Check if the line contains the timing information
         if (strstr(output, "----Seconds to respond:") != NULL) {
             // Extract the timing number
@@ -49,17 +58,19 @@ float time(const char *prompt, char *type) {
 
 int main() {
     // Array of prompt strings
-    const size_t num_prompts = 1; // You can add more prompts
+    const size_t num_prompts = 3; // You can add more prompts
     const char *prompts[] = {"I don't like to code", "I like tea", "Testing"};
 
     // Variables to store total times for CPU and GPU
     float total_cpu_time = 0.0f;
     float total_gpu_time = 0.0f;
 
+    printf("\ntimer program is running. this may take a few minutes...\n\n");
+
     // Loop through the list of prompts
     for (int i = 0; i < num_prompts; i++) {
         const char *prompt = prompts[i];
-        printf("Prompt: %s\n", prompt);
+        printf("prompt: %s\n", prompt);
         
         // Call time_cpu() and time_gpu() functions with the current prompt
         float cpu_time = time(prompt, "cpu");
@@ -71,8 +82,9 @@ int main() {
     }
 
     // Print the total times for CPU and GPU
-    printf("Total CPU time: %.6f\n", total_cpu_time);
-    printf("Total GPU time: %.6f\n", total_gpu_time);
+    printf("\n");
+    printf("total cpu time: %.6f\n", total_cpu_time);
+    printf("total gpu time: %.6f\n", total_gpu_time);
 
     return 0;
 }
