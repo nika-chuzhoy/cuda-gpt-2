@@ -419,7 +419,7 @@ int main(int tmp, char** argv) {
     ///////////////INFERENCE FUNCTION INLINED////////////////////
     /////////////////////////////////////////////////////////////
 
-    if(is_set_prompt) {
+    if(is_set_prompt) {  // Run only one prompt
         start = get_wall_time();
 
         char buf[1000] = {0};
@@ -438,7 +438,7 @@ int main(int tmp, char** argv) {
         strcat(buf, "\n\n");
 
         do_inference(start, end, cpu_time_used, wpe, wte, weights, T, buf, output);
-    } else {
+    } else {  // Run conversation loop indefinitely
         while (1) {  // Nika loop
             start = get_wall_time();
 

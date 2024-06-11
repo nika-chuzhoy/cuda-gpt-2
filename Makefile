@@ -25,7 +25,7 @@ cpu: bin
 	./bin/c_chat_gpt_2 gpt2-124M.ckpt vocab.bpe $(SEQ_LEN)
 
 gpu: bin
-	nvcc -c $(GPU_SRC_CU) -o $(GPU_OBJ) --use_fast_math -Xptxas -O3,--v
+	nvcc -c $(GPU_SRC_CU) -o $(GPU_OBJ) --use_fast_math -Xptxas -O3
 	gcc -O3 $(GPU_SRC_C) $(GPU_OBJ) -o $(GPU_BIN) -L/usr/local/cuda/lib64 -lcudart -lm -lstdc++ -lcublas
 	./bin/optimized_chat_gpt_2 gpt2-124M.ckpt vocab.bpe $(SEQ_LEN)
 
@@ -36,7 +36,7 @@ cpu_seed: bin
 	./bin/c_chat_gpt_2 gpt2-124M.ckpt vocab.bpe $(SEQ_LEN) $(seed) "$(prompt)"
 
 gpu_seed: bin
-	nvcc -c $(GPU_SRC_CU) -o $(GPU_OBJ)
+	nvcc -c $(GPU_SRC_CU) -o $(GPU_OBJ) --use_fast_math -Xptxas -O3
 	gcc -O3 $(GPU_SRC_C) $(GPU_OBJ) -o $(GPU_BIN) -L/usr/local/cuda/lib64 -lcudart -lm -lstdc++ -lcublas
 	./bin/optimized_chat_gpt_2 gpt2-124M.ckpt vocab.bpe $(SEQ_LEN) $(seed) "$(prompt)"
 
