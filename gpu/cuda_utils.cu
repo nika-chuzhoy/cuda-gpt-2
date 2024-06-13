@@ -110,6 +110,14 @@ extern "C" void matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows, 
     cudaFree(d_C);
 }
 
+// TODO MERGE TEMP
+extern "C" void matMulCUDA_MTP(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
+    // Cuda Kernel
+    dim3 dimBlock(32, 32);
+    dim3 dimGrid(CEIL_DIV(bRows, 32), CEIL_DIV(aRows, 32));
+    matMulCudaKernelOptimized<<<dimGrid, dimBlock>>>(a, b, out, aRows, aCols, bRows);
+}
+
 // Cublas for matrix multiplication with A and transpose(B)
 extern "C" void matMulCublas(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
     cublasHandle_t handle;
@@ -201,13 +209,23 @@ extern "C" void sumCUDA(Matrix a, Matrix out)
     cudaFree(d_output);
 }
 
+// TODO MERGE TEMP
+extern "C" void sumCUDA_MTP(Matrix a, Matrix out)
+{
+    dim3 dimBlock(256, 1);
+    dim3 dimGrid(128, 1);
+;
+    int sharedMemSize = dimBlock.x * sizeof(float);
+
+    sumCudaKernel<<<dimGrid, dimBlock, sharedMemSize>>>(a.dat, out.dat, a.rows, a.cols);
+}
 
 // Take a slice out of a larger matrix and return a new matrix with the given shape
-extern "C" Matrix sliceCublas(Matrix a, int b, int rows, int cols) {
+/*extern "C" Matrix sliceCublas(Matrix a, int b, int rows, int cols) {
     // change to devicetodevice later TODO
     Matrix out = {a.dat + b * rows, rows, cols};
     return out;
-}
+}*/
 
 // From Lab 2
 __global__
@@ -270,6 +288,14 @@ extern "C" void transposeCUDA(Matrix a, Matrix out)
     cudaFree(d_output);
 }
 
+extern "C" void transposeCUDA_MTP(Matrix a, Matrix out)
+{
+    const int TILE_DIM = 64;
+    dim3 dimBlock(TILE_DIM, TILE_DIM / 4); // 64x16
+    dim3 dimGrid(CEIL_DIV(a.cols, TILE_DIM), CEIL_DIV(a.rows, TILE_DIM));
+    transposeKernel<<<dimGrid, dimBlock>>>(a.dat, out.dat, a.rows, a.cols);
+}
+
 //  Matrix fn(Matrix a, float k)
 #define UNARY(fn, opr)                                                 \
     __global__ void fn##Kernel(float* a, int aRows, int aCols, float* out, float k) { \
@@ -299,6 +325,30 @@ extern "C" void transposeCUDA(Matrix a, Matrix out)
         return m;                                                      \
     }
 
+// TODO MERGE TEMP
+//  Matrix fn(Matrix a, float k)
+#define UNARY_MTP(fn, opr)                                                 \
+    __global__ void fn##Kernel_MTP(float* a, int aRows, int aCols, float* out, float k) { \
+        int row = blockIdx.y * blockDim.y + threadIdx.y;               \
+        int col = blockIdx.x * blockDim.x + threadIdx.x;               \
+        if (row < aRows && col < aCols) {                              \
+            int i = row * aCols + col;                                 \
+            float b = a[i];                                            \
+            b += 0;                                                    \
+            out[i] = opr;                                              \
+        }                                                              \
+    }                                                                  \
+    extern "C" Matrix fn##CUDA_MTP(Matrix m, float k) {                \
+        float* a = m.dat;                                              \
+        int aRows = m.rows;                                            \
+        int aCols = m.cols;                                            \
+        dim3 blockSize(32, 32);                                        \
+        dim3 gridSize((aCols + blockSize.x - 1) / blockSize.x,         \
+                      (aRows + blockSize.y - 1) / blockSize.y);        \
+        fn##Kernel_MTP<<<gridSize, blockSize>>>(a, aRows, aCols, a, k);\
+        return m;                                                      \
+    }
+
 UNARY(divide_const, b / k)                      // divide by a constant
 UNARY(add_const, b + k)                         // add a constant
 UNARY(mat_isqrt, 1. / sqrt(b))                  // square root each entry
@@ -314,6 +364,17 @@ UNARY(tril, (i / k < i % (int)k) ? 0 : exp(b / 8))
 
 // GELU is the activation function used for transformers
 UNARY(GELU, b / 2 * (1 + tanh(.7978845 * (b + .044715 * b * b * b))))
+
+
+// TODO MERGE TEMP
+UNARY_MTP(mtptest, b + (0*k))
+UNARY_MTP(divide_const, b / k)                      // divide by a constant
+UNARY_MTP(add_const, b + k)                         // add a constant
+UNARY_MTP(mat_isqrt, 1. / sqrt(b))                  // square root each entry
+UNARY_MTP(mat_exp, exp(b))                          // exponetiate each entry
+UNARY_MTP(broadcast, a[(i / aCols) * aCols])  // copy the first column to every column
+UNARY_MTP(tril, (i / k < i % (int)k) ? 0 : exp(b / 8))
+UNARY_MTP(GELU, b / 2 * (1 + tanh(.7978845 * (b + .044715 * b * b * b))))
 
 #define BINARY(fn, opr)                                                                \
     __global__ void fn##Kernel(float* a, int aRows, int aCols, float* b, float* out) { \
@@ -356,3 +417,28 @@ BINARY(divide, /)    // divide the first matrix by the second
 // drop the actual b.dat[i]
 BINARY(add_tile, +b[i % aCols];(void))
 BINARY(multiply_tile, *b[i % aCols];(void))
+
+// TODO MERGE TEMP
+
+#define BINARY_MTP(fn, opr)                                                                \
+    __global__ void fn##Kernel_MTP(float* a, int aRows, int aCols, float* b, float* out) { \
+        int row = blockIdx.y * blockDim.y + threadIdx.y;                                   \
+        int col = blockIdx.x * blockDim.x + threadIdx.x;                                   \
+        if (row < aRows && col < aCols) {                                                  \
+            int i = row * aCols + col;                                                     \
+            a[i] = a[i] opr b[i];                                                          \
+        }                                                                                  \
+    }                                                                                      \
+    extern "C" Matrix fn##CUDA_MTP(Matrix a, Matrix b) {                                   \
+        dim3 blockSize(32, 32);                                                            \
+        dim3 gridSize((a.cols + blockSize.x - 1) / blockSize.x,                            \
+                      (a.rows + blockSize.y - 1) / blockSize.y);                           \
+        fn##Kernel_MTP<<<gridSize, blockSize>>>(a.dat, a.rows, a.cols, b.dat, a.dat);      \
+        return a;                                                                          \
+    }
+
+BINARY_MTP(add, +)       // add two matrices together
+BINARY_MTP(multiply, *)  // multiply two matrices together
+BINARY_MTP(divide, /)    // divide the first matrix by the second
+BINARY_MTP(add_tile, +b[i % aCols];(void))
+BINARY_MTP(multiply_tile, *b[i % aCols];(void))

@@ -21,6 +21,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <stdbool.h>
+#include <cuda_runtime.h>
 #include"cuda_utils.h"
 
 int DIM, NLAYER, NHEAD;
@@ -31,9 +32,12 @@ int tmp, zz;
 char* bpe;
 
 void *memory, *memory_top;
+// TODO MERGE TEMP
+void *memory_gpu, *memory_gpu_top;
 FILE* fp;
 
 Matrix* layer_weights;
+Matrix* layer_weights_GPU;
 
 // Standard stuff here. Let's save space with all our loops
 #define LOOP(i, j) for (int i = 0; i < j; i++)
@@ -43,6 +47,15 @@ Matrix NewMatrix(int rows, int cols, int reuse) {
     float* a = memory;
     memory += tmp = 4 * rows * cols;
     memset(a, 0, tmp * reuse);
+    Matrix out = {a, rows, cols};
+    return out;
+}
+
+//TODO MERGE TEMP
+Matrix NewMatrixGPU(int rows, int cols, int reuse) {
+    float* a = memory_gpu;
+    memory_gpu += tmp = 4 * rows * cols;
+    cudaMemset(a, 0, tmp * reuse);
     Matrix out = {a, rows, cols};
     return out;
 }
@@ -63,6 +76,14 @@ Matrix sum(Matrix a) {
     return out;
 }
 
+// TODO MERGE TEMP
+Matrix sum_MTP(Matrix d_a) {    
+    Matrix d_out = NewMatrixGPU(d_a.rows, d_a.cols, 1);
+    sumCUDA_MTP(d_a, d_out);
+    broadcastCUDA_MTP(d_out, 0);
+    return d_out;
+}
+
 // Transpose a matrix flipping the rows and columns
 Matrix transpose(Matrix a) {
     Matrix out = NewMatrix(a.cols, a.rows, 1);
@@ -70,10 +91,22 @@ Matrix transpose(Matrix a) {
     return out;
 }
 
+Matrix transpose_MTP(Matrix a) { // TODO MERGE TEMP
+    Matrix out = NewMatrixGPU(a.cols, a.rows, 1);
+    transposeCUDA_MTP(a, out);
+    return out;
+}
+
 Matrix matmul_t_fast(Matrix a, Matrix b) {
   Matrix out = NewMatrix(a.rows, b.rows, !token_processed_upto);
   matMulCUDA(a.dat + token_processed_upto * a.cols, num_total_tokens - token_processed_upto, a.cols, b.dat, b.rows, b.cols, out.dat + token_processed_upto * b.rows);
   return addCUDA(NewMatrix(out.rows, out.cols, 1), out);
+}
+
+Matrix matmul_t_fast_MTP(Matrix a, Matrix b) { // TODO MERGE TEMP
+  Matrix out = NewMatrixGPU(a.rows, b.rows, !token_processed_upto);
+  matMulCUDA_MTP(a.dat + token_processed_upto * a.cols, num_total_tokens - token_processed_upto, a.cols, b.dat, b.rows, b.cols, out.dat + token_processed_upto * b.rows);
+  return addCUDA_MTP(NewMatrixGPU(out.rows, out.cols, 1), out);
 }
 
 // Take a slice out of a larger matrix and return a new matrix with the given shape
@@ -91,8 +124,19 @@ Matrix LayerNorm(Matrix a, int i) {
     return out;
 }
 
+// TODO MERGE TEMP
+Matrix LayerNorm_MTP(Matrix d_a, int i) {
+    size_t size = d_a.rows * d_a.cols * sizeof(float);
+    Matrix d_b = addCUDA_MTP(d_a, divide_constCUDA_MTP(sum_MTP(d_a), -d_a.cols));
+    Matrix d_k = divide_constCUDA_MTP(sum_MTP(multiplyCUDA_MTP(addCUDA_MTP(NewMatrixGPU(d_b.rows, d_b.cols, 1), d_b), d_b)), d_b.cols - 1);  // todo can remove -1
+    Matrix d_out = add_tileCUDA_MTP(multiply_tileCUDA_MTP(multiplyCUDA_MTP(addCUDA_MTP(NewMatrixGPU(d_b.rows, d_b.cols, 1), d_b), mat_isqrtCUDA_MTP(add_constCUDA_MTP(d_k, 1e-5), 0)), layer_weights_GPU[i + 1]), layer_weights_GPU[i]);
+    return d_out;
+}
+
 // Compute a linear matrix layer, x * W + b
 #define Linear(a, i) add_tileCUDA(matmul_t_fast(a, layer_weights[i + 1]), layer_weights[i])
+// TODO MERGE TEMP
+#define Linear_MTP(a, i) add_tileCUDA_MTP(matmul_t_fast_MTP(a, layer_weights_GPU[i + 1]), layer_weights_GPU[i])
 
 // Read a weight matrix out of the data file into memory
 Matrix read_matrix(int rows, int cols) {
@@ -164,15 +208,17 @@ int* tokenize(char* seq, /*INT*/ int* result) {
     return result;
 }
 
-void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Matrix wte, Matrix *weights, int T, char *buf, int *output){
+void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Matrix wte, Matrix d_wpe, Matrix d_wte, Matrix *weights, Matrix *weights_gpu, int T, char *buf, int *output){
     start = get_wall_time();
     num_total_tokens = tokenize(buf, output) - output;
     memory_top = memory;
+    memory_gpu_top = memory_gpu;
     token_processed_upto = 0;
 
     while (1) {  // Brian loop
         // Reset the memory to the top of the original value
         memory = memory_top;
+        memory_gpu = memory_gpu_top;
 
         // Compute the context window size as the next largest multiple of 32
         T = num_total_tokens + 32 - num_total_tokens % 32;
@@ -188,6 +234,10 @@ void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Ma
                 line.dat[i * DIM + j] = wte.dat[output[i] * DIM + j] + wpe.dat[j * 1024 + i];
             }
         }
+
+        // START MERGE HERE -----------------------------------
+        Matrix d_line = NewMatrixGPU(line.rows, line.cols, 1);
+        cudaMemcpy(d_line.dat, line.dat, line.rows*line.cols*sizeof(float), cudaMemcpyHostToDevice);
 
         // Start the transformer neural network inference.
         LOOP(i, NLAYER) {  // Lynn loop
@@ -212,55 +262,62 @@ void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Ma
 
             // This layer's weights are at this offset
             layer_weights = weights + 12 * permute;
+            layer_weights_GPU = weights_gpu + 12 * permute;
 
             // Compute the keys, queries, and values all at once with a big multiply
-            Matrix qkv = transpose(slice(Linear(LayerNorm(line, 4), 0), 0, T * 3, DIM));
+            
+            Matrix d_qkv = transpose_MTP(slice(Linear_MTP(LayerNorm_MTP(d_line, 4), 0), 0, T * 3, DIM));
 
             // Make space for the output of the computation
-            Matrix result = NewMatrix(DIM, T, 1);
+            Matrix result = NewMatrixGPU(DIM, T, 1);
 
                 LOOP(k, NHEAD) {
                     // Split the qkv into each of the heads
-                    Matrix merge = transpose(slice(qkv, k * 3, 64 * T, 3)),
+                    Matrix merge = transpose_MTP(slice(d_qkv, k * 3, 64 * T, 3)),
                         // perform the product of the queries and keys and then exponentiate
-                        a = trilCUDA(matmul_t_fast(transpose(slice(merge, 0, 64, T)),
-                                            transpose(slice(merge, T, 64, T))),
-                                T),
+                        a = trilCUDA_MTP(matmul_t_fast_MTP(transpose_MTP(slice(merge, 0, 64, T)),
+                                            transpose_MTP(slice(merge, T, 64, T))), T),
                         // finally multiply the softmax output (a/sum(a)) with the values matrix
-                        out = transpose(matmul_t_fast(divideCUDA(a, sum(a)), slice(merge, T * 2, 64, T)));
+                        out = transpose_MTP(matmul_t_fast_MTP(divideCUDA_MTP(a, sum_MTP(a)), slice(merge, T * 2, 64, T)));
                     // and copy the output to the proper location in the result matrix
-                    memcpy(result.dat + 64 * T * k, out.dat, 64 * T * 4);
+                    //memcpy(result.dat + 64 * T * k, out.dat, 64 * T * 4);
+                    cudaMemcpy(result.dat + 64 * T * k, out.dat, 64 * T * 4, cudaMemcpyDeviceToDevice);
                 }
 
                 // Residual connection
-                line = addCUDA(line, Linear(transpose(result), 2));
+                d_line = addCUDA_MTP(d_line, Linear_MTP(transpose_MTP(result), 2));
 
                 // Activation function and residual connection
-                line = addCUDA(line, Linear(GELUCUDA(Linear(LayerNorm(line, 6), 8), 0), 10));
+                d_line = addCUDA_MTP(d_line, Linear_MTP(GELUCUDA_MTP(Linear_MTP(LayerNorm_MTP(d_line, 6), 8), 0), 10));
             }
 
         // Reset layer weights so we can do the last layer norm
         layer_weights = weights;
-        line = LayerNorm(line, 12 * NLAYER);
+        layer_weights_GPU = weights_gpu;
+        d_line = LayerNorm_MTP(d_line, 12 * NLAYER);
 
         // And finally compute the output logits
         token_processed_upto = 0;
         int tmp = num_total_tokens;
         num_total_tokens = 1;
-        Matrix result = matmul_t_fast(transpose(slice(line, tmp - 1, DIM, 1)), wte);
+        Matrix result = matmul_t_fast_MTP(transpose_MTP(slice(d_line, tmp - 1, DIM, 1)), d_wte);
         token_processed_upto = num_total_tokens = tmp;
 
             // Calculate softmax probabilities
             int size = 5e4;
             float temperature = 0.7;
-            float* logits = divide_constCUDA(result, temperature).dat;
+            Matrix d_softmax_out = divide_constCUDA_MTP(result, temperature);
+            // TODO MERGE TEMP: moving back to CPU memory here
+            Matrix softmax_out = NewMatrix(d_softmax_out.rows, d_softmax_out.cols, 1);
+            cudaMemcpy(softmax_out.dat, d_softmax_out.dat, softmax_out.rows*softmax_out.cols*sizeof(float), cudaMemcpyDeviceToHost);
+            float* logits = softmax_out.dat;
             double max = logits[0];
             for (int i = 1; i < size; i++) {
                 if (logits[i] > max) {
                     max = logits[i];
                 }
             }
-
+        
         double sum = 0.0;
         double probs[size];
         for (int i = 0; i < size; i++) {
@@ -348,7 +405,19 @@ int main(int tmp, char** argv) {
 
     // Allocate space
     zz = atoi(argv[3]);
-    memory = malloc(2LL * DIM * DIM * NLAYER * zz);
+    memory = malloc(2LL * DIM * DIM * NLAYER * zz); // temp addition
+    // TODO MERGE TEMP
+    cudaError_t cudaStatus;
+    size_t totalSize = 2LL * DIM * DIM * NLAYER * zz;
+    size_t freeMem, totalMem;
+    cudaStatus = cudaMemGetInfo(&freeMem, &totalMem);
+    printf("Available GPU device memory: %zu bytes\n", freeMem);
+    printf("Total GPU memory size required: %zu bytes\n", totalSize);
+    cudaStatus = cudaMalloc((void **)&memory_gpu, totalSize);
+    if (cudaStatus != cudaSuccess) {
+        printf("help!!! cudaMalloc failed: %s\n", cudaGetErrorString(cudaStatus));
+        // handle the failure, possibly by exiting the program or trying a different memory allocation strategy
+    }
 
     /////////////////////////////////////////////////////////////
     ////////////////LOAD BPE FUNCTION INLINED////////////////////
@@ -395,7 +464,9 @@ int main(int tmp, char** argv) {
     /////////////////////////////////////////////////////////////
     //////////////READ MATRIX FUNCTION INLINED///////////////////
     /////////////////////////////////////////////////////////////
-    Matrix weights[999];
+    const int LENWEIGHTS = 999;
+    Matrix weights[LENWEIGHTS];
+    Matrix weights_gpu[LENWEIGHTS];
     Matrix* out = weights;
 
     LOOP(i, NLAYER){
@@ -410,6 +481,29 @@ int main(int tmp, char** argv) {
 
     Matrix wpe = read_matrix(1024, DIM),
         wte = transpose(read_matrix(5e4, DIM));
+    
+    // TODO MERGE TEMP
+    Matrix d_wpe;
+    Matrix d_wte;
+    cudaMalloc((void**)&d_wpe.dat, wpe.rows * wpe.cols * sizeof(float));
+    cudaMalloc((void**)&d_wte.dat, wte.rows * wte.cols * sizeof(float));
+    cudaMemcpy(d_wpe.dat, wpe.dat, wpe.rows * wpe.cols * sizeof(float), cudaMemcpyHostToDevice);
+    d_wpe.rows = wpe.rows;
+    d_wpe.cols = wpe.cols;
+    cudaMemcpy(d_wte.dat, wte.dat, wte.rows * wte.cols * sizeof(float), cudaMemcpyHostToDevice);
+    d_wte.rows = wte.rows;
+    d_wte.cols = wte.cols;
+    // Loop to copy each matrix from CPU to GPU
+    for (int i = 0; i < (NLAYER * 12 + 2); i++) {
+        // Allocate memory for the matrix data on GPU
+        int dataSize = weights[i].rows * weights[i].cols * sizeof(float);
+        cudaMalloc((void**)&weights_gpu[i].dat, dataSize);
+        // Copy matrix data from CPU to GPU
+        cudaMemcpy(weights_gpu[i].dat, weights[i].dat, dataSize, cudaMemcpyHostToDevice);
+        // Set rows, cols for the matrix
+        weights_gpu[i].rows = weights[i].rows;
+        weights_gpu[i].cols = weights[i].cols;
+    }
 
     end = get_wall_time();
     cpu_time_used = ((double)(end - start));
@@ -436,8 +530,8 @@ int main(int tmp, char** argv) {
 
         printf("AI: ");
         strcat(buf, "\n\n");
-
-        do_inference(start, end, cpu_time_used, wpe, wte, weights, T, buf, output);
+        // TODO MERGE TEMP: later, we will only use weights_gpu and not weights
+        do_inference(start, end, cpu_time_used, wpe, wte, d_wpe, d_wte, weights, weights_gpu, T, buf, output);
     } else {  // Run conversation loop indefinitely
         while (1) {  // Nika loop
             start = get_wall_time();
@@ -460,8 +554,8 @@ int main(int tmp, char** argv) {
 
             printf("AI: ");
             strcat(buf, "\n\n");
-
-            do_inference(start, end, cpu_time_used, wpe, wte, weights, T, buf, output);
+            // TODO MERGE TEMP: later, we will only use weights_gpu and not weights
+            do_inference(start, end, cpu_time_used, wpe, wte, d_wpe, d_wte, weights, weights_gpu, T, buf, output);
         }
     }
 }

@@ -15,7 +15,7 @@ TEST_BIN = bin/test_matmul
 TIMER_SRC = timer.c
 TIMER_BIN = bin/timer
 
-SEQ_LEN = 1024
+SEQ_LEN = 512
 
 # Targets
 all: cpu gpu
