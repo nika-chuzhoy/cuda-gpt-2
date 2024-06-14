@@ -296,6 +296,21 @@ extern "C" void transposeCUDA_MTP(Matrix a, Matrix out)
     transposeKernel<<<dimGrid, dimBlock>>>(a.dat, out.dat, a.rows, a.cols);
 }
 
+__global__ void sumembeddingsCUDA_kernel(Matrix line, Matrix wpe, int *output, int num_total_tokens, int DIM, Matrix wte) {
+     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+     int i = idx / DIM;
+     int j = idx % DIM;
+     if (idx < num_total_tokens * DIM) {
+        line.dat[i * DIM + j] = wte.dat[output[i] * DIM + j] + wpe.dat[j * 1024 + i];
+     }
+}
+
+extern "C" void sumembeddingsCUDA_MTP(Matrix line, Matrix wte, Matrix wpe, int *output, int num_total_tokens, int DIM) {
+    int threadsPerBlock = 1024;
+    int numBlocks = CEIL_DIV(num_total_tokens * DIM, threadsPerBlock);
+    sumembeddingsCUDA_kernel<<<numBlocks, threadsPerBlock>>>(line, wpe, output, num_total_tokens, DIM, wte);
+}
+        
 //  Matrix fn(Matrix a, float k)
 #define UNARY(fn, opr)                                                 \
     __global__ void fn##Kernel(float* a, int aRows, int aCols, float* out, float k) { \

@@ -27,6 +27,8 @@ void sumCUDA_MTP(Matrix a, Matrix out);
 void transposeCUDA(Matrix a, Matrix out);
 void transposeCUDA_MTP(Matrix a, Matrix out); // MERGE TEMP
 
+void sumembeddingsCUDA_MTP(Matrix line, Matrix wte, Matrix wpe, int *output, int num_total_tokens, int DIM);
+
 //Matrix sliceCublas(Matrix a, int b, int rows, int cols);
 
 UNARYdef(divide_const)                    // divide by a constant

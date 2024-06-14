@@ -208,7 +208,7 @@ int* tokenize(char* seq, /*INT*/ int* result) {
     return result;
 }
 
-void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Matrix wte, Matrix d_wpe, Matrix d_wte, Matrix *weights, Matrix *weights_gpu, int T, char *buf, int *output){
+void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Matrix wte, Matrix d_wpe, Matrix d_wte, Matrix *weights, Matrix *weights_gpu, int T, char *buf, int *output, int *d_output){
     start = get_wall_time();
     num_total_tokens = tokenize(buf, output) - output;
     memory_top = memory;
@@ -216,6 +216,8 @@ void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Ma
     token_processed_upto = 0;
 
     while (1) {  // Brian loop
+        // START MERGE HERE -----------------------------------
+        cudaMemcpy(d_output, output, 2 * zz * sizeof(int), cudaMemcpyHostToDevice);
         // Reset the memory to the top of the original value
         memory = memory_top;
         memory_gpu = memory_gpu_top;
@@ -237,7 +239,8 @@ void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Ma
 
         // START MERGE HERE -----------------------------------
         Matrix d_line = NewMatrixGPU(line.rows, line.cols, 1);
-        cudaMemcpy(d_line.dat, line.dat, line.rows*line.cols*sizeof(float), cudaMemcpyHostToDevice);
+
+        sumembeddingsCUDA_MTP(d_line, d_wte, d_wpe, d_output, num_total_tokens, DIM);
 
         // Start the transformer neural network inference.
         LOOP(i, NLAYER) {  // Lynn loop
@@ -303,20 +306,20 @@ void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Ma
         Matrix result = matmul_t_fast_MTP(transpose_MTP(slice(d_line, tmp - 1, DIM, 1)), d_wte);
         token_processed_upto = num_total_tokens = tmp;
 
-            // Calculate softmax probabilities
-            int size = 5e4;
-            float temperature = 0.7;
-            Matrix d_softmax_out = divide_constCUDA_MTP(result, temperature);
-            // TODO MERGE TEMP: moving back to CPU memory here
-            Matrix softmax_out = NewMatrix(d_softmax_out.rows, d_softmax_out.cols, 1);
-            cudaMemcpy(softmax_out.dat, d_softmax_out.dat, softmax_out.rows*softmax_out.cols*sizeof(float), cudaMemcpyDeviceToHost);
-            float* logits = softmax_out.dat;
-            double max = logits[0];
-            for (int i = 1; i < size; i++) {
-                if (logits[i] > max) {
-                    max = logits[i];
-                }
+        // Calculate softmax probabilities
+        int size = 5e4;
+        float temperature = 0.7;
+        Matrix d_softmax_out = divide_constCUDA_MTP(result, temperature);
+        // TODO MERGE TEMP: moving back to CPU memory here
+        Matrix softmax_out = NewMatrix(d_softmax_out.rows, d_softmax_out.cols, 1);
+        cudaMemcpy(softmax_out.dat, d_softmax_out.dat, softmax_out.rows*softmax_out.cols*sizeof(float), cudaMemcpyDeviceToHost);
+        float* logits = softmax_out.dat;
+        double max = logits[0];
+        for (int i = 1; i < size; i++) {
+            if (logits[i] > max) {
+                max = logits[i];
             }
+        }
         
         double sum = 0.0;
         double probs[size];
@@ -526,12 +529,14 @@ int main(int tmp, char** argv) {
 
         // This is going to store our prompt
         int output[2 * zz];
+        int *d_output;
+        cudaMalloc((void**)&d_output, 2 * zz * sizeof(int));
         num_total_tokens = 0;
 
         printf("AI: ");
         strcat(buf, "\n\n");
         // TODO MERGE TEMP: later, we will only use weights_gpu and not weights
-        do_inference(start, end, cpu_time_used, wpe, wte, d_wpe, d_wte, weights, weights_gpu, T, buf, output);
+        do_inference(start, end, cpu_time_used, wpe, wte, d_wpe, d_wte, weights, weights_gpu, T, buf, output, d_output);
     } else {  // Run conversation loop indefinitely
         while (1) {  // Nika loop
             start = get_wall_time();
@@ -550,12 +555,15 @@ int main(int tmp, char** argv) {
 
             // This is going to store our prompt
             int output[2 * zz];
+            int *d_output;
+            cudaMalloc((void**)&d_output, 2 * zz * sizeof(int));
+
             num_total_tokens = 0;
 
             printf("AI: ");
             strcat(buf, "\n\n");
             // TODO MERGE TEMP: later, we will only use weights_gpu and not weights
-            do_inference(start, end, cpu_time_used, wpe, wte, d_wpe, d_wte, weights, weights_gpu, T, buf, output);
+            do_inference(start, end, cpu_time_used, wpe, wte, d_wpe, d_wte, weights, weights_gpu, T, buf, output, d_output);
         }
     }
 }
