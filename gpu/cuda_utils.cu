@@ -1,6 +1,7 @@
 #include <cuda_runtime.h>
 #include <iostream>
 #include <cublas_v2.h>
+#include <float.h>
 #include "cuda_utils.h"
 
 #define CEIL_DIV(a, b) (((a) + (b) - 1) / (b))
@@ -184,8 +185,6 @@ __global__ void sumCudaKernel(float* input, float* output, int rows, int cols) {
     }
 }
 
-
-
 extern "C" void sumCUDA(Matrix a, Matrix out)
 {
     float *d_input, *d_output;
@@ -198,7 +197,7 @@ extern "C" void sumCUDA(Matrix a, Matrix out)
 
     dim3 dimBlock(256, 1);
     dim3 dimGrid(128, 1);
-;
+
     int sharedMemSize = dimBlock.x * sizeof(float);
 
     sumCudaKernel<<<dimGrid, dimBlock, sharedMemSize>>>(d_input, d_output, a.rows, a.cols);
@@ -311,6 +310,68 @@ extern "C" void sumembeddingsCUDA_MTP(Matrix line, Matrix wte, Matrix wpe, int *
     sumembeddingsCUDA_kernel<<<numBlocks, threadsPerBlock>>>(line, wpe, output, num_total_tokens, DIM, wte);
 }
         
+__device__ static float atomicMax(float* address, float val)
+{
+    int* address_as_i = (int*) address;
+    int old = *address_as_i, assumed;
+    do {
+        assumed = old;
+        old = ::atomicCAS(address_as_i, assumed,
+            __float_as_int(::fmaxf(val, __int_as_float(assumed))));
+    } while (assumed != old);
+    return __int_as_float(old);
+}
+
+__global__
+void findMaxKernel(float *out_data, float *max_abs_val, int length) {
+    extern __shared__ float sdata[];
+
+    uint thread_idx = blockDim.x * blockIdx.x + threadIdx.x;
+
+    float localMax = -INFINITY;
+    while (thread_idx < length) {
+        localMax = fmaxf(localMax, out_data[thread_idx]);
+        thread_idx += blockDim.x * gridDim.x;
+    }
+    uint tid = threadIdx.x;
+    sdata[tid] = localMax;
+    __syncthreads();
+
+    for (uint s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sdata[tid] = fmaxf(sdata[tid], sdata[tid + s]);
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        atomicMax(max_abs_val, sdata[0]);
+    }
+}
+
+extern "C" void softmaxCUDA_MTP(Matrix a) {
+    dim3 dimBlock(256, 1);
+    dim3 dimGrid(128, 1);
+    int sharedMemSize = dimBlock.x * sizeof(float);
+
+    float *dev_max_val;
+    cudaMalloc(&dev_max_val, sizeof(float));
+    cudaMemset(dev_max_val, -10000, sizeof(float));
+
+    findMaxKernel<<<dimGrid, dimBlock, sharedMemSize>>>(a.dat, dev_max_val, a.cols);
+    float max_val;
+    cudaMemcpy(&max_val, dev_max_val, sizeof(float), cudaMemcpyDeviceToHost);
+    add_constCUDA_MTP(a, -1.0 * max_val);
+    mat_expCUDA_MTP(a, 0);
+    
+    float *dev_sum;
+    cudaMalloc(&dev_sum, sizeof(float));
+    sumCudaKernel<<<dimGrid, dimBlock, dimBlock.x * sizeof(float)>>>(a.dat, dev_sum, a.rows, a.cols);
+    float sum;
+    cudaMemcpy(&sum, dev_sum, sizeof(float), cudaMemcpyDeviceToHost);
+    divide_constCUDA_MTP(a, sum);
+}
+   
 //  Matrix fn(Matrix a, float k)
 #define UNARY(fn, opr)                                                 \
     __global__ void fn##Kernel(float* a, int aRows, int aCols, float* out, float k) { \

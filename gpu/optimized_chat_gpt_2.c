@@ -310,34 +310,17 @@ void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Ma
         int size = 5e4;
         float temperature = 0.7;
         Matrix d_softmax_out = divide_constCUDA_MTP(result, temperature);
+        softmaxCUDA_MTP(d_softmax_out);
         // TODO MERGE TEMP: moving back to CPU memory here
         Matrix softmax_out = NewMatrix(d_softmax_out.rows, d_softmax_out.cols, 1);
         cudaMemcpy(softmax_out.dat, d_softmax_out.dat, softmax_out.rows*softmax_out.cols*sizeof(float), cudaMemcpyDeviceToHost);
-        float* logits = softmax_out.dat;
-        double max = logits[0];
-        for (int i = 1; i < size; i++) {
-            if (logits[i] > max) {
-                max = logits[i];
-            }
-        }
-        
-        double sum = 0.0;
-        double probs[size];
-        for (int i = 0; i < size; i++) {
-            probs[i] = exp(logits[i] - max);
-            sum += probs[i];
-        }
-
-        for (int i = 0; i < size; i++) {
-            probs[i] /= sum;
-        }
 
         // Weighted random sampling
         tmp = 0;
         float cumulative[size];
-        cumulative[0] = probs[0];
+        cumulative[0] = softmax_out.dat[0];
         for (int i = 1; i < size; i++) {
-            cumulative[i] = cumulative[i - 1] + probs[i];
+            cumulative[i] = cumulative[i - 1] + softmax_out.dat[i];
         }
 
         float r = ((float)rand() / RAND_MAX) * cumulative[size - 1];
@@ -418,8 +401,8 @@ int main(int tmp, char** argv) {
     printf("Total GPU memory size required: %zu bytes\n", totalSize);
     cudaStatus = cudaMalloc((void **)&memory_gpu, totalSize);
     if (cudaStatus != cudaSuccess) {
-        printf("help!!! cudaMalloc failed: %s\n", cudaGetErrorString(cudaStatus));
         // handle the failure, possibly by exiting the program or trying a different memory allocation strategy
+        printf("Help!!! cudaMalloc failed: %s\n", cudaGetErrorString(cudaStatus));
     }
 
     /////////////////////////////////////////////////////////////
@@ -483,7 +466,7 @@ int main(int tmp, char** argv) {
     *out++ = read_matrix(DIM, 1);  // ln_f.weight
 
     Matrix wpe = read_matrix(1024, DIM),
-        wte = transpose(read_matrix(5e4, DIM));
+    wte = transpose(read_matrix(5e4, DIM));
     
     // TODO MERGE TEMP
     Matrix d_wpe;
