@@ -170,13 +170,6 @@ extern "C" void sumCUDA(Matrix a, Matrix out)
     sumCudaKernel<<<dimGrid, dimBlock, sharedMemSize>>>(a.dat, out.dat, a.rows, a.cols);
 }
 
-// Take a slice out of a larger matrix and return a new matrix with the given shape
-/*extern "C" Matrix sliceCublas(Matrix a, int b, int rows, int cols) {
-    // change to devicetodevice later TODO
-    Matrix out = {a.dat + b * rows, rows, cols};
-    return out;
-}*/
-
 // From Lab 2
 __global__
 void transposeKernel(const float *input, float *output, int rows, int cols) {
