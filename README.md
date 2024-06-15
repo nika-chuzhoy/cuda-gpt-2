@@ -31,7 +31,7 @@ The following are the results from running `make test` on the server (name unmen
 <img width="1122" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/dc7ea328-5912-40d0-93b8-a6132697aad9">
 ## Timed Complete Demo Comparison Results
 <video width="640" height="480" controls>
-  <source src="docs/CS179-demo.mov" type="video/mp4">
+  <source src="docs/CS179-demo.mp4" type="video/mp4">
   Your browser does not support the video tag.
 </video>
 
