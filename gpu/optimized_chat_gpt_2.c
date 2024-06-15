@@ -36,7 +36,6 @@ void *memory, *memory_top;
 void *memory_gpu, *memory_gpu_top;
 FILE* fp;
 
-Matrix* layer_weights;
 Matrix* layer_weights_GPU;
 
 // Standard stuff here. Let's save space with all our loops
@@ -44,7 +43,7 @@ Matrix* layer_weights_GPU;
 
 // A matrix is just a 2d vector of floats with rows and columns.
 Matrix NewMatrix(int rows, int cols, int reuse) {
-    float* a = memory;
+    float* a = malloc(rows * cols * sizeof(float));
     memory += tmp = 4 * rows * cols;
     memset(a, 0, tmp * reuse);
     Matrix out = {a, rows, cols};
@@ -182,7 +181,7 @@ int* tokenize(char* seq, /*INT*/ int* result) {
     return result;
 }
 
-void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, Matrix d_wte, Matrix *weights, Matrix *weights_gpu, int T, char *buf, int *output, int *d_output){
+void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, Matrix d_wte, Matrix *weights_gpu, int T, char *buf, int *output, int *d_output){
     start = get_wall_time();
     num_total_tokens = tokenize(buf, output) - output;
     memory_top = memory;
@@ -228,7 +227,6 @@ void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, 
             }
 
             // This layer's weights are at this offset
-            layer_weights = weights + 12 * permute;
             layer_weights_GPU = weights_gpu + 12 * permute;
 
             // Compute the keys, queries, and values all at once with a big multiply
@@ -259,7 +257,6 @@ void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, 
             }
 
         // Reset layer weights so we can do the last layer norm
-        layer_weights = weights;
         layer_weights_GPU = weights_gpu;
         d_line = LayerNorm(d_line, 12 * NLAYER);
 
@@ -465,8 +462,7 @@ int main(int tmp, char** argv) {
 
         printf("AI: ");
         strcat(buf, "\n\n");
-        // TODO MERGE TEMP: later, we will only use weights_gpu and not weights
-        do_inference(start, end, cpu_time_used, d_wpe, d_wte, weights, weights_gpu, T, buf, output, d_output);
+        do_inference(start, end, cpu_time_used, d_wpe, d_wte, weights_gpu, T, buf, output, d_output);
     } else {  // Run conversation loop indefinitely
         while (1) {  // Nika loop
             start = get_wall_time();
@@ -492,8 +488,7 @@ int main(int tmp, char** argv) {
 
             printf("AI: ");
             strcat(buf, "\n\n");
-            // TODO MERGE TEMP: later, we will only use weights_gpu and not weights
-            do_inference(start, end, cpu_time_used, d_wpe, d_wte, weights, weights_gpu, T, buf, output, d_output);
+            do_inference(start, end, cpu_time_used, d_wpe, d_wte, weights_gpu, T, buf, output, d_output);
         }
     }
 }
