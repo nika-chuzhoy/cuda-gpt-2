@@ -30,10 +30,9 @@ The following are the results from running `make test` on the server (name unmen
 <img width="1122" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/075dcc05-1304-4afa-9e4e-4a4738091244">
 <img width="1122" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/dc7ea328-5912-40d0-93b8-a6132697aad9">
 ## Timed Complete Demo Comparison Results
-<video width="640" height="480" controls>
-  <source src="docs/CS179-demo.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+https://github.com/nika-chuzhoy/cuda-gpt-2/assets/47908317/ef9af091-2709-4a53-8d08-b512f576fa82
+
+
 
 # Performance Analysis
 The GPU demo located in `optimized_chat_gpt_2.c` is significantly (20x) faster than the CPU demo in `c_chat_gpt_2.c` and gives identical results. Here is a list of things we tried that we were not able to get working or did not have time to get to or would like to explore with more time:
