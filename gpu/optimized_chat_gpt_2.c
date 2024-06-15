@@ -208,16 +208,16 @@ int* tokenize(char* seq, /*INT*/ int* result) {
     return result;
 }
 
-void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Matrix wte, Matrix d_wpe, Matrix d_wte, Matrix *weights, Matrix *weights_gpu, int T, char *buf, int *output, int *d_output){
+void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, Matrix d_wte, Matrix *weights, Matrix *weights_gpu, int T, char *buf, int *output, int *d_output){
     start = get_wall_time();
     num_total_tokens = tokenize(buf, output) - output;
     memory_top = memory;
     memory_gpu_top = memory_gpu;
     token_processed_upto = 0;
+    cudaMemcpy(d_output, output, 2 * zz * sizeof(int), cudaMemcpyHostToDevice);
 
     while (1) {  // Brian loop
         // START MERGE HERE -----------------------------------
-        cudaMemcpy(d_output, output, 2 * zz * sizeof(int), cudaMemcpyHostToDevice);
         // Reset the memory to the top of the original value
         memory = memory_top;
         memory_gpu = memory_gpu_top;
@@ -227,20 +227,10 @@ void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Ma
         // If the number is 0 mod 32, then we need to recompute everything bottom up
         token_processed_upto *= !!(num_total_tokens % 32);
 
-        // This is the line we're going to process.
-        Matrix line = NewMatrix(T, DIM, 1);
-
-        // Start by loading the embedding weights and adding the position encoding.
-        LOOP(i, num_total_tokens) {
-            LOOP(j, DIM) {
-                line.dat[i * DIM + j] = wte.dat[output[i] * DIM + j] + wpe.dat[j * 1024 + i];
-            }
-        }
-
         // START MERGE HERE -----------------------------------
-        Matrix d_line = NewMatrixGPU(line.rows, line.cols, 1);
+        Matrix d_line = NewMatrixGPU(T, DIM, 1);
 
-        sumembeddingsCUDA_MTP(d_line, d_wte, d_wpe, d_output, num_total_tokens, DIM);
+        embeddingsCUDA_MTP(d_line, d_wte, d_wpe, d_output, num_total_tokens, DIM);
 
         // Start the transformer neural network inference.
         LOOP(i, NLAYER) {  // Lynn loop
@@ -310,36 +300,19 @@ void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Ma
         int size = 5e4;
         float temperature = 0.7;
         Matrix d_softmax_out = divide_constCUDA_MTP(result, temperature);
-        softmaxCUDA_MTP(d_softmax_out);
-        // TODO MERGE TEMP: moving back to CPU memory here
-        Matrix softmax_out = NewMatrix(d_softmax_out.rows, d_softmax_out.cols, 1);
-        cudaMemcpy(softmax_out.dat, d_softmax_out.dat, softmax_out.rows*softmax_out.cols*sizeof(float), cudaMemcpyDeviceToHost);
-
-        // Weighted random sampling
-        tmp = 0;
-        float cumulative[size];
-        cumulative[0] = softmax_out.dat[0];
-        for (int i = 1; i < size; i++) {
-            cumulative[i] = cumulative[i - 1] + softmax_out.dat[i];
-        }
-
-        float r = ((float)rand() / RAND_MAX) * cumulative[size - 1];
-
-        for (int i = 0; i < size; i++) {
-            if (r < cumulative[i]) {
-                tmp = i;
-                break;
-            }
-        }
+        softmaxSampleCUDA_MTP(d_softmax_out, &tmp);
 
         // If the history is too long, then purge by half
         if (num_total_tokens == zz) {
             memcpy(output, output + zz / 2, tmp * 2);
+            cudaMemcpy(d_output, d_output + zz / 2, tmp * 2, cudaMemcpyDeviceToDevice);
             num_total_tokens -= zz / 2;
             token_processed_upto = 0;
         }
         // Write it to the history buffer
-        output[num_total_tokens++] = tmp;
+        output[num_total_tokens] = tmp;
+        cudaMemcpy(d_output + num_total_tokens, &tmp, sizeof(int), cudaMemcpyHostToDevice);
+        num_total_tokens++;
 
         // If it's a newline this is the end of the converstaion
         if (bpe[tmp * 999] == 10) {
@@ -519,7 +492,7 @@ int main(int tmp, char** argv) {
         printf("AI: ");
         strcat(buf, "\n\n");
         // TODO MERGE TEMP: later, we will only use weights_gpu and not weights
-        do_inference(start, end, cpu_time_used, wpe, wte, d_wpe, d_wte, weights, weights_gpu, T, buf, output, d_output);
+        do_inference(start, end, cpu_time_used, d_wpe, d_wte, weights, weights_gpu, T, buf, output, d_output);
     } else {  // Run conversation loop indefinitely
         while (1) {  // Nika loop
             start = get_wall_time();
@@ -546,7 +519,7 @@ int main(int tmp, char** argv) {
             printf("AI: ");
             strcat(buf, "\n\n");
             // TODO MERGE TEMP: later, we will only use weights_gpu and not weights
-            do_inference(start, end, cpu_time_used, wpe, wte, d_wpe, d_wte, weights, weights_gpu, T, buf, output, d_output);
+            do_inference(start, end, cpu_time_used, d_wpe, d_wte, weights, weights_gpu, T, buf, output, d_output);
         }
     }
 }

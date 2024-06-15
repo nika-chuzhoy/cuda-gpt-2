@@ -362,19 +362,14 @@ void do_inference(double start, double end, double cpu_time_used, Matrix wpe, Ma
         
         // Weighted random sampling
         tmp = 0;
-        float cumulative[size];
-        cumulative[0] = probs[0];
-        for (int i = 1; i < size; i++) {
-            cumulative[i] = cumulative[i - 1] + probs[i];
-        }
-
-        float r = ((float)rand() / RAND_MAX) * cumulative[size - 1];
-
-        for (int i = 0; i < size; i++) {
-            if (r < cumulative[i]) {
-                tmp = i;
+        sum = 0.0;
+        double r = ((double)rand() / RAND_MAX);
+        while(tmp < size) {
+            sum += probs[tmp];
+            if (sum >= r) {
                 break;
             }
+            tmp++;
         }
 
         // If the history is too long, then purge by half

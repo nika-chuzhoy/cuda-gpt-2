@@ -295,7 +295,7 @@ extern "C" void transposeCUDA_MTP(Matrix a, Matrix out)
     transposeKernel<<<dimGrid, dimBlock>>>(a.dat, out.dat, a.rows, a.cols);
 }
 
-__global__ void sumembeddingsCUDA_kernel(Matrix line, Matrix wpe, int *output, int num_total_tokens, int DIM, Matrix wte) {
+__global__ void embeddingsKernel(Matrix line, Matrix wpe, int *output, int num_total_tokens, int DIM, Matrix wte) {
      int idx = blockIdx.x * blockDim.x + threadIdx.x;
      int i = idx / DIM;
      int j = idx % DIM;
@@ -304,12 +304,12 @@ __global__ void sumembeddingsCUDA_kernel(Matrix line, Matrix wpe, int *output, i
      }
 }
 
-extern "C" void sumembeddingsCUDA_MTP(Matrix line, Matrix wte, Matrix wpe, int *output, int num_total_tokens, int DIM) {
+extern "C" void embeddingsCUDA_MTP(Matrix line, Matrix wte, Matrix wpe, int *output, int num_total_tokens, int DIM) {
     int threadsPerBlock = 1024;
     int numBlocks = CEIL_DIV(num_total_tokens * DIM, threadsPerBlock);
-    sumembeddingsCUDA_kernel<<<numBlocks, threadsPerBlock>>>(line, wpe, output, num_total_tokens, DIM, wte);
+    embeddingsKernel<<<numBlocks, threadsPerBlock>>>(line, wpe, output, num_total_tokens, DIM, wte);
 }
-        
+
 __device__ static float atomicMax(float* address, float val)
 {
     int* address_as_i = (int*) address;
@@ -322,6 +322,7 @@ __device__ static float atomicMax(float* address, float val)
     return __int_as_float(old);
 }
 
+// From lab 3
 __global__
 void findMaxKernel(float *out_data, float *max_abs_val, int length) {
     extern __shared__ float sdata[];
@@ -349,27 +350,46 @@ void findMaxKernel(float *out_data, float *max_abs_val, int length) {
     }
 }
 
-extern "C" void softmaxCUDA_MTP(Matrix a) {
+__global__
+void weightedSampleKernel(float *probs, int *output, double rand_val, int length) {
+    double sum = 0.0;
+    int tmp = 0;
+    while(tmp < length) {
+        sum += probs[tmp];
+        if (sum >= rand_val) {
+            break;
+        }
+        tmp++;
+    }
+    *output = tmp;
+}
+
+extern "C" void softmaxSampleCUDA_MTP(Matrix a, int *out) {
     dim3 dimBlock(256, 1);
     dim3 dimGrid(128, 1);
     int sharedMemSize = dimBlock.x * sizeof(float);
 
     float *dev_max_val;
+    float max_val;
     cudaMalloc(&dev_max_val, sizeof(float));
     cudaMemset(dev_max_val, -10000, sizeof(float));
-
     findMaxKernel<<<dimGrid, dimBlock, sharedMemSize>>>(a.dat, dev_max_val, a.cols);
-    float max_val;
     cudaMemcpy(&max_val, dev_max_val, sizeof(float), cudaMemcpyDeviceToHost);
     add_constCUDA_MTP(a, -1.0 * max_val);
-    mat_expCUDA_MTP(a, 0);
+    mat_expCUDA_MTP(a, 1);
     
     float *dev_sum;
+    float sum;
     cudaMalloc(&dev_sum, sizeof(float));
     sumCudaKernel<<<dimGrid, dimBlock, dimBlock.x * sizeof(float)>>>(a.dat, dev_sum, a.rows, a.cols);
-    float sum;
     cudaMemcpy(&sum, dev_sum, sizeof(float), cudaMemcpyDeviceToHost);
     divide_constCUDA_MTP(a, sum);
+    
+    int *dev_out;
+    cudaMalloc(&dev_out, sizeof(int));
+    double r = ((double)rand() / RAND_MAX);
+    weightedSampleKernel<<<1, 1>>>(a.dat, dev_out, r, a.cols);
+    cudaMemcpy(out, dev_out, sizeof(int), cudaMemcpyDeviceToHost);
 }
    
 //  Matrix fn(Matrix a, float k)

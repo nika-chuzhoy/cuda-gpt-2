@@ -27,8 +27,8 @@ void sumCUDA_MTP(Matrix a, Matrix out);
 void transposeCUDA(Matrix a, Matrix out);
 void transposeCUDA_MTP(Matrix a, Matrix out); // MERGE TEMP
 
-void sumembeddingsCUDA_MTP(Matrix line, Matrix wte, Matrix wpe, int *output, int num_total_tokens, int DIM);
-void softmaxCUDA_MTP(Matrix a);
+void embeddingsCUDA_MTP(Matrix line, Matrix wte, Matrix wpe, int *output, int num_total_tokens, int DIM);
+void softmaxSampleCUDA_MTP(Matrix a, int *out);
 
 //Matrix sliceCublas(Matrix a, int b, int rows, int cols);
 
