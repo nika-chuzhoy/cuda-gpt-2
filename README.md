@@ -20,6 +20,9 @@ If the total memory required exceeds the memory available, the program will prin
 # Project Description
 The programs run in 2 primary modes. In either case, we inference GPT-2 (the 124M checkpoint, although our program is entirely flexible to larger checkpoints which can be downloaded by modifying the `make download` command in the makefile, because of the fact that larger checkpoints face memory constraints). Either one can provide a fixed prompt which GPT-2 autocompletes (see how `make time` works in the makefile to understand how to use a fixed prompt) until GPT-2 generates the newline token `\n` or one can run the demos and interactively give prompts which are autocompleted by GPT-2 until a `\n` token is generated, at which point one can continue the "conversation" by giving more of a prompt. 2 things to note: 1) we extended the original CPU code credited below to sample tokens from GPT-2 according to the conditional probability distribution from the model's softmax output rather than doing greedy search (arg-max) to choose the most likely token at each step. 2) in exceptionally rare circumstances, the model may get stuck in a loop where it keeps generating tokens without generaing the newline token `\n`, although this is an artifact of GPT-2 itself and not attributable to our implemnentation of its inference. Our big contribution is that we provide the ability to do these 2 forms of inference on the GPU, with inference being done almost entirely (including most expensive computations) on the GPU using CUDA kernels we have written. This provides a visually noticeable speedup during usage.
 
+# Results
+<img width="268" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/59e4cdd3-d8bf-49a1-a0cc-dd2519d71818">
+
 # Credit
 
 This code is modified from [c-chat-gpt-2](https://github.com/carlini/c-chat-gpt-2/tree/main) by [Nicholas Carlini](https://nicholas.carlini.com/).
