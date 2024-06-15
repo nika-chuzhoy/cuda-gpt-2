@@ -13,12 +13,14 @@
 Note that the demo and timer scripts measure and display approximations of the required and available GPU memory as follows:
 ```
 Available GPU device memory:   12636127232 bytes
-Total GPU memory size required: 7247757312 bytes
+Total GPU memory size required: 3623878656 bytes
 ```
 If the total memory required exceeds the memory available, the program will print an error message and crash. This can happen depending on the GPU usage of others on the server, and if it does happen, you can reduce the SEQ_LEN variable in the makefile to reduce the required memory until it is <= the memory available.
 
 # Project Description
-The programs run in 2 primary modes. In either case, we inference GPT-2 (the 124M checkpoint, although our program is entirely flexible to larger checkpoints which can be downloaded by modifying the `make download` command in the makefile, because of the fact that larger checkpoints face memory constraints). Either one can provide a fixed prompt which GPT-2 autocompletes (see how `make time` works in the makefile to understand how to use a fixed prompt) until GPT-2 generates the newline token `\n` or one can run the demos and interactively give prompts which are autocompleted by GPT-2 until a `\n` token is generated, at which point one can continue the "conversation" by giving more of a prompt. 2 things to note: 1) we extended the original CPU code credited below to sample tokens from GPT-2 according to the conditional probability distribution from the model's softmax output rather than doing greedy search (arg-max) to choose the most likely token at each step. 2) in exceptionally rare circumstances, the model may get stuck in a loop where it keeps generating tokens without generaing the newline token `\n`, although this is an artifact of GPT-2 itself and not attributable to our implemnentation of its inference. Our big contribution is that we provide the ability to do these 2 forms of inference on the GPU, with inference being done almost entirely (including most expensive computations) on the GPU using CUDA kernels we have written. This provides a visually noticeable speedup during usage.
+The programs run in 2 primary modes. In either case, we inference GPT-2 (the 124M checkpoint, although our program is entirely flexible to larger checkpoints which can be downloaded by modifying the `make download` command in the makefile, because of the fact that larger checkpoints face memory constraints). Either one can provide a fixed prompt which GPT-2 autocompletes (see how `make time` works in the makefile to understand how to use a fixed prompt) until GPT-2 generates the newline token `\n` or one can run the demos and interactively give prompts which are autocompleted by GPT-2 until a `\n` token is generated, at which point one can continue the "conversation" by giving more of a prompt. 
+
+2 things to note: 1) we extended the original CPU code credited below to sample tokens from GPT-2 according to the conditional probability distribution from the model's softmax output rather than doing greedy search (arg-max) to choose the most likely token at each step. 2) in exceptionally rare circumstances, the model may get stuck in a loop where it keeps generating tokens without generaing the newline token `\n`, although this is an artifact of GPT-2 itself and not attributable to our implemnentation of its inference. Our big contribution is that we provide the ability to do these 2 forms of inference on the GPU, with inference being done almost entirely (including most expensive computations) on the GPU using CUDA kernels we have written. This provides a visually noticeable speed-up during usage.
 
 # Results
 ## Unit Tests Results
@@ -28,10 +30,17 @@ The following are the results from running `make test` on the server (name unmen
 <img width="1122" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/075dcc05-1304-4afa-9e4e-4a4738091244">
 <img width="1122" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/dc7ea328-5912-40d0-93b8-a6132697aad9">
 ## Timed Complete Demo Comparison Results
-TBD
+<video width="640" height="480" controls>
+  <source src="docs/CS179-demo.mov" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
 
 # Performance Analysis
-The GPU demo located in `optimized_chat_gpt_2.c` is significantly faster than the CPU demo in `c_chat_gpt_2.c` and achieves equivalent performance. Here is a list of things we tried that we were not able to get working or did not have time to get to or would like to explore with more time:
+The GPU demo located in `optimized_chat_gpt_2.c` is significantly (20x) faster than the CPU demo in `c_chat_gpt_2.c` and gives identical results. Here is a list of things we tried that we were not able to get working or did not have time to get to or would like to explore with more time:
+* Load model directly onto GPU
+* Tokenize text on the GPU
+* We separated each matrix operation into its own kernel for clarity but it was sometimes possible to merge two kernels together which would avoid multiple kernel calls.
+* We unsuccessfully attempted to implement texture memory access, which is a read-only cache that would have optimized the random access patterns in the embeddingCUDA kernel.
 
 # Credit
 
