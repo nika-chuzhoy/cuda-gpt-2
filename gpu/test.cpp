@@ -164,7 +164,7 @@ void matMulCUDATest() {
     cudaEventCreate(&stop_gpu);
     cudaEventRecord(start_gpu);
 
-    matMulCUDA_MTP(gpu_a_input, aRows, aCols, gpu_b_input, bRows, bCols, gpu_c_output_gpu);
+    matMulCUDA(gpu_a_input, aRows, aCols, gpu_b_input, bRows, bCols, gpu_c_output_gpu);
 
     cudaEventRecord(stop_gpu);
     cudaEventSynchronize(stop_gpu);
@@ -220,7 +220,7 @@ void matMulCUDATest2() {
     cudaEventCreate(&stop_cpu);
     cudaEventRecord(start_cpu);
 
-    matMulCUDA_MTP(gpu_a_input, aRows, aCols, gpu_b_input, bRows, bCols, gpu_c_output_cpu);
+    matMulCUDA(gpu_a_input, aRows, aCols, gpu_b_input, bRows, bCols, gpu_c_output_cpu);
 
     cudaEventRecord(stop_cpu);
     cudaEventSynchronize(stop_cpu);
@@ -301,7 +301,7 @@ void matMulCublasTest() {
     cudaEventCreate(&stop_gpu);
     cudaEventRecord(start_gpu);
 
-    matMulCUDA_MTP(gpu_a_input, aRows, aCols, gpu_b_input, bRows, bCols, gpu_c_output_gpu);
+    matMulCUDA(gpu_a_input, aRows, aCols, gpu_b_input, bRows, bCols, gpu_c_output_gpu);
 
     cudaEventRecord(stop_gpu);
     cudaEventSynchronize(stop_gpu);
@@ -383,8 +383,8 @@ void cudaSumTest() {
     cudaEventCreate(&stop_gpu);
     cudaEventRecord(start_gpu);
 
-    sumCUDA_MTP(mat_in, mat_out);
-    broadcastCUDA_MTP(mat_out, 0);
+    sumCUDA(mat_in, mat_out);
+    broadcastCUDA(mat_out, 0);
 
     cudaEventRecord(stop_gpu);
     cudaEventSynchronize(stop_gpu);
@@ -456,7 +456,7 @@ void cudaTransposeTest() {
     cudaEventCreate(&stop_gpu);
     cudaEventRecord(start_gpu);
 
-    transposeCUDA(mat, mat);
+    transposeCUDA_util(mat, mat);
 
     cudaEventRecord(stop_gpu);
     cudaEventSynchronize(stop_gpu);
@@ -520,7 +520,7 @@ void cudaTransposeTest() {
         cudaEventCreate(&stop_gpu);                                             \
         cudaEventRecord(start_gpu);                                             \
                                                                                 \
-        Matrix gpu_out = fn##CUDA_MTP(gpu_in, k);                               \
+        Matrix gpu_out = fn##CUDA(gpu_in, k);                                   \
                                                                                 \
         cudaEventRecord(stop_gpu);                                              \
         cudaEventSynchronize(stop_gpu);                                         \
@@ -597,7 +597,7 @@ UNARYtest(GELU)
         cudaEventCreate(&stop_gpu);                                             \
         cudaEventRecord(start_gpu);                                             \
                                                                                 \
-        Matrix gpu_out = fn##CUDA_MTP(gpu_a, gpu_b);                            \
+        Matrix gpu_out = fn##CUDA(gpu_a, gpu_b);                                \
                                                                                 \
         cudaEventRecord(stop_gpu);                                              \
         cudaEventSynchronize(stop_gpu);                                         \

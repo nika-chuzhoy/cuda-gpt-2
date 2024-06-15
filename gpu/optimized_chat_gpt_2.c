@@ -68,45 +68,31 @@ double get_wall_time() {
     return wall_time;
 }
 
-// Compute the sum of the rows in a matrix, populating each row with the same sum
-Matrix sum(Matrix a) {
-    Matrix out = NewMatrix(a.rows, a.cols, 1);
-    sumCUDA(a, out);
-    broadcastCUDA(out, 0);
-    return out;
-}
-
 // TODO MERGE TEMP
-Matrix sum_MTP(Matrix d_a) {    
+Matrix sum(Matrix d_a) {    
     Matrix d_out = NewMatrixGPU(d_a.rows, d_a.cols, 1);
-    sumCUDA_MTP(d_a, d_out);
-    broadcastCUDA_MTP(d_out, 0);
+    sumCUDA(d_a, d_out);
+    broadcastCUDA(d_out, 0);
     return d_out;
 }
 
 // Transpose a matrix flipping the rows and columns
-Matrix transpose(Matrix a) {
+Matrix transpose_util(Matrix a) {
     Matrix out = NewMatrix(a.cols, a.rows, 1);
+    transposeCUDA_util(a, out);
+    return out;
+}
+
+Matrix tranpose(Matrix a) {
+    Matrix out = NewMatrixGPU(a.cols, a.rows, 1);
     transposeCUDA(a, out);
     return out;
 }
 
-Matrix transpose_MTP(Matrix a) { // TODO MERGE TEMP
-    Matrix out = NewMatrixGPU(a.cols, a.rows, 1);
-    transposeCUDA_MTP(a, out);
-    return out;
-}
-
 Matrix matmul_t_fast(Matrix a, Matrix b) {
-  Matrix out = NewMatrix(a.rows, b.rows, !token_processed_upto);
-  matMulCUDA(a.dat + token_processed_upto * a.cols, num_total_tokens - token_processed_upto, a.cols, b.dat, b.rows, b.cols, out.dat + token_processed_upto * b.rows);
-  return addCUDA(NewMatrix(out.rows, out.cols, 1), out);
-}
-
-Matrix matmul_t_fast_MTP(Matrix a, Matrix b) { // TODO MERGE TEMP
   Matrix out = NewMatrixGPU(a.rows, b.rows, !token_processed_upto);
-  matMulCUDA_MTP(a.dat + token_processed_upto * a.cols, num_total_tokens - token_processed_upto, a.cols, b.dat, b.rows, b.cols, out.dat + token_processed_upto * b.rows);
-  return addCUDA_MTP(NewMatrixGPU(out.rows, out.cols, 1), out);
+  matMulCUDA(a.dat + token_processed_upto * a.cols, num_total_tokens - token_processed_upto, a.cols, b.dat, b.rows, b.cols, out.dat + token_processed_upto * b.rows);
+  return addCUDA(NewMatrixGPU(out.rows, out.cols, 1), out);
 }
 
 // Take a slice out of a larger matrix and return a new matrix with the given shape
@@ -115,28 +101,17 @@ Matrix slice(Matrix a, int b, int rows, int cols) {
     return out;
 }
 
-// A somewhat weird unary operator that computes the "layernorm" operator.
-// Exactly what it does doesn't matter.
-Matrix LayerNorm(Matrix a, int i) {
-    Matrix b = addCUDA(a, divide_constCUDA(sum(a), -a.cols));
-    Matrix k = divide_constCUDA(sum(multiplyCUDA(addCUDA(NewMatrix(b.rows, b.cols, 1), b), b)), b.cols - 1);  // todo can remove -1
-    Matrix out = add_tileCUDA(multiply_tileCUDA(multiplyCUDA(addCUDA(NewMatrix(b.rows, b.cols, 1), b), mat_isqrtCUDA(add_constCUDA(k, 1e-5), 0)), layer_weights[i + 1]), layer_weights[i]);
-    return out;
-}
-
 // TODO MERGE TEMP
 Matrix LayerNorm_MTP(Matrix d_a, int i) {
     size_t size = d_a.rows * d_a.cols * sizeof(float);
-    Matrix d_b = addCUDA_MTP(d_a, divide_constCUDA_MTP(sum_MTP(d_a), -d_a.cols));
-    Matrix d_k = divide_constCUDA_MTP(sum_MTP(multiplyCUDA_MTP(addCUDA_MTP(NewMatrixGPU(d_b.rows, d_b.cols, 1), d_b), d_b)), d_b.cols - 1);  // todo can remove -1
-    Matrix d_out = add_tileCUDA_MTP(multiply_tileCUDA_MTP(multiplyCUDA_MTP(addCUDA_MTP(NewMatrixGPU(d_b.rows, d_b.cols, 1), d_b), mat_isqrtCUDA_MTP(add_constCUDA_MTP(d_k, 1e-5), 0)), layer_weights_GPU[i + 1]), layer_weights_GPU[i]);
+    Matrix d_b = addCUDA(d_a, divide_constCUDA(sum(d_a), -d_a.cols));
+    Matrix d_k = divide_constCUDA(sum(multiplyCUDA(addCUDA(NewMatrixGPU(d_b.rows, d_b.cols, 1), d_b), d_b)), d_b.cols - 1);  // todo can remove -1
+    Matrix d_out = add_tileCUDA(multiply_tileCUDA(multiplyCUDA(addCUDA(NewMatrixGPU(d_b.rows, d_b.cols, 1), d_b), mat_isqrtCUDA(add_constCUDA(d_k, 1e-5), 0)), layer_weights_GPU[i + 1]), layer_weights_GPU[i]);
     return d_out;
 }
 
-// Compute a linear matrix layer, x * W + b
-#define Linear(a, i) add_tileCUDA(matmul_t_fast(a, layer_weights[i + 1]), layer_weights[i])
 // TODO MERGE TEMP
-#define Linear_MTP(a, i) add_tileCUDA_MTP(matmul_t_fast_MTP(a, layer_weights_GPU[i + 1]), layer_weights_GPU[i])
+#define Linear_MTP(a, i) add_tileCUDA(matmul_t_fast(a, layer_weights_GPU[i + 1]), layer_weights_GPU[i])
 
 // Read a weight matrix out of the data file into memory
 Matrix read_matrix(int rows, int cols) {
@@ -155,7 +130,7 @@ Matrix read_matrix(int rows, int cols) {
     }
 
     // Our matrix multiply assumes transposed weights.
-    return transpose(a);
+    return transpose_util(a);
 }
 
 // And now for something completely different: byte pair encoding
@@ -230,7 +205,7 @@ void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, 
         // START MERGE HERE -----------------------------------
         Matrix d_line = NewMatrixGPU(T, DIM, 1);
 
-        embeddingsCUDA_MTP(d_line, d_wte, d_wpe, d_output, num_total_tokens, DIM);
+        embeddingsCUDA(d_line, d_wte, d_wpe, d_output, num_total_tokens, DIM);
 
         // Start the transformer neural network inference.
         LOOP(i, NLAYER) {  // Lynn loop
@@ -259,29 +234,29 @@ void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, 
 
             // Compute the keys, queries, and values all at once with a big multiply
             
-            Matrix d_qkv = transpose_MTP(slice(Linear_MTP(LayerNorm_MTP(d_line, 4), 0), 0, T * 3, DIM));
+            Matrix d_qkv = tranpose(slice(Linear_MTP(LayerNorm_MTP(d_line, 4), 0), 0, T * 3, DIM));
 
             // Make space for the output of the computation
             Matrix result = NewMatrixGPU(DIM, T, 1);
 
                 LOOP(k, NHEAD) {
                     // Split the qkv into each of the heads
-                    Matrix merge = transpose_MTP(slice(d_qkv, k * 3, 64 * T, 3)),
+                    Matrix merge = tranpose(slice(d_qkv, k * 3, 64 * T, 3)),
                         // perform the product of the queries and keys and then exponentiate
-                        a = trilCUDA_MTP(matmul_t_fast_MTP(transpose_MTP(slice(merge, 0, 64, T)),
-                                            transpose_MTP(slice(merge, T, 64, T))), T),
+                        a = trilCUDA(matmul_t_fast(tranpose(slice(merge, 0, 64, T)),
+                                            tranpose(slice(merge, T, 64, T))), T),
                         // finally multiply the softmax output (a/sum(a)) with the values matrix
-                        out = transpose_MTP(matmul_t_fast_MTP(divideCUDA_MTP(a, sum_MTP(a)), slice(merge, T * 2, 64, T)));
+                        out = tranpose(matmul_t_fast(divideCUDA(a, sum(a)), slice(merge, T * 2, 64, T)));
                     // and copy the output to the proper location in the result matrix
                     //memcpy(result.dat + 64 * T * k, out.dat, 64 * T * 4);
                     cudaMemcpy(result.dat + 64 * T * k, out.dat, 64 * T * 4, cudaMemcpyDeviceToDevice);
                 }
 
                 // Residual connection
-                d_line = addCUDA_MTP(d_line, Linear_MTP(transpose_MTP(result), 2));
+                d_line = addCUDA(d_line, Linear_MTP(tranpose(result), 2));
 
                 // Activation function and residual connection
-                d_line = addCUDA_MTP(d_line, Linear_MTP(GELUCUDA_MTP(Linear_MTP(LayerNorm_MTP(d_line, 6), 8), 0), 10));
+                d_line = addCUDA(d_line, Linear_MTP(GELUCUDA(Linear_MTP(LayerNorm_MTP(d_line, 6), 8), 0), 10));
             }
 
         // Reset layer weights so we can do the last layer norm
@@ -293,14 +268,14 @@ void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, 
         token_processed_upto = 0;
         int tmp = num_total_tokens;
         num_total_tokens = 1;
-        Matrix result = matmul_t_fast_MTP(transpose_MTP(slice(d_line, tmp - 1, DIM, 1)), d_wte);
+        Matrix result = matmul_t_fast(tranpose(slice(d_line, tmp - 1, DIM, 1)), d_wte);
         token_processed_upto = num_total_tokens = tmp;
 
         // Calculate softmax probabilities
         int size = 5e4;
         float temperature = 0.7;
-        Matrix d_softmax_out = divide_constCUDA_MTP(result, temperature);
-        softmaxSampleCUDA_MTP(d_softmax_out, &tmp);
+        Matrix d_softmax_out = divide_constCUDA(result, temperature);
+        softmaxSampleCUDA(d_softmax_out, &tmp);
 
         // If the history is too long, then purge by half
         if (num_total_tokens == zz) {
@@ -439,7 +414,7 @@ int main(int tmp, char** argv) {
     *out++ = read_matrix(DIM, 1);  // ln_f.weight
 
     Matrix wpe = read_matrix(1024, DIM),
-    wte = transpose(read_matrix(5e4, DIM));
+    wte = transpose_util(read_matrix(5e4, DIM));
     
     // TODO MERGE TEMP
     Matrix d_wpe;
