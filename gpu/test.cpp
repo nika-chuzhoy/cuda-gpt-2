@@ -8,6 +8,17 @@
 
 #define LOOP(i, j) for (int i = 0; i < j; i++)
 
+float *cuda_convert(float *cpu_mem, size_t size) {
+    float *gpu_mem;
+    cudaMalloc(&gpu_mem, size);
+    cudaMemcpy(gpu_mem, cpu_mem, size, cudaMemcpyHostToDevice);
+    return gpu_mem;
+}
+
+void cpu_convert(float *cpu_mem, float *gpu_mem, size_t size) {
+    cudaMemcpy(cpu_mem, gpu_mem, size, cudaMemcpyDeviceToHost);
+}
+
 // Unary matrix meta-function here.
 // Loop over every entry in a matrix and operate on it
 // (independent of any other entry, possibly using some constant k)
@@ -144,12 +155,16 @@ void matMulCUDATest() {
     float cpu_time_milliseconds;
     cudaEventElapsedTime(&cpu_time_milliseconds, start_cpu, stop_cpu);
 
+    float *gpu_a_input = cuda_convert(a_input, aRows * aCols * sizeof(float));
+    float *gpu_b_input = cuda_convert(b_input, bRows * bCols * sizeof(float));
+    float *gpu_c_output_gpu = cuda_convert(c_output_gpu, aRows * bRows * sizeof(float));
+
     cudaEvent_t start_gpu, stop_gpu;
     cudaEventCreate(&start_gpu);
     cudaEventCreate(&stop_gpu);
     cudaEventRecord(start_gpu);
 
-    matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_gpu);
+    matMulCUDA_MTP(gpu_a_input, aRows, aCols, gpu_b_input, bRows, bCols, gpu_c_output_gpu);
 
     cudaEventRecord(stop_gpu);
     cudaEventSynchronize(stop_gpu);
@@ -158,6 +173,7 @@ void matMulCUDATest() {
 
     // printMatrix(c_output_gpu, aRows, bRows);
     // printMatrix(c_output_cpu, aRows, bRows);
+    cpu_convert(c_output_gpu, gpu_c_output_gpu, aRows * bRows * sizeof(float));
 
     std::cout << std::endl;
     std::cout << "CPU time: " << cpu_time_milliseconds << " milliseconds" << std::endl;
@@ -175,6 +191,9 @@ void matMulCUDATest() {
     free(b_input);
     free(c_output_gpu);
     free(c_output_cpu);
+    cudaFree(gpu_a_input);
+    cudaFree(gpu_b_input);
+    cudaFree(gpu_c_output_gpu);
 }
 
 void matMulCUDATest2() {
@@ -189,21 +208,26 @@ void matMulCUDATest2() {
 
     float *a_input = generateRandomMatrix(aRows, aCols);
     float *b_input = generateRandomMatrix(bRows, bCols);
+    float *gpu_a_input = cuda_convert(a_input, aRows * aCols * sizeof(float));
+    float *gpu_b_input = cuda_convert(b_input, bRows * bCols * sizeof(float));
 
     float *c_output_gpu = (float*) malloc(aRows * bRows * sizeof(float));
     float *c_output_cpu = (float*) malloc(aRows * bRows * sizeof(float));
+    float *gpu_c_output_cpu = cuda_convert(c_output_cpu, aRows * bRows * sizeof(float));
 
     cudaEvent_t start_cpu, stop_cpu;
     cudaEventCreate(&start_cpu);
     cudaEventCreate(&stop_cpu);
     cudaEventRecord(start_cpu);
 
-    matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_cpu);
+    matMulCUDA_MTP(gpu_a_input, aRows, aCols, gpu_b_input, bRows, bCols, gpu_c_output_cpu);
 
     cudaEventRecord(stop_cpu);
     cudaEventSynchronize(stop_cpu);
     float cpu_time_milliseconds;
     cudaEventElapsedTime(&cpu_time_milliseconds, start_cpu, stop_cpu);
+
+    cpu_convert(c_output_cpu, gpu_c_output_cpu, aRows * bRows * sizeof(float));
 
     cudaEvent_t start_gpu, stop_gpu;
     cudaEventCreate(&start_gpu);
@@ -236,6 +260,9 @@ void matMulCUDATest2() {
     free(b_input);
     free(c_output_gpu);
     free(c_output_cpu);
+    cudaFree(gpu_a_input);
+    cudaFree(gpu_b_input);
+    cudaFree(gpu_c_output_cpu);
 }
 
 void matMulCublasTest() {
@@ -250,9 +277,12 @@ void matMulCublasTest() {
 
     float *a_input = generateRandomMatrix(aRows, aCols);
     float *b_input = generateRandomMatrix(bRows, bCols);
+    float *gpu_a_input = cuda_convert(a_input, aRows * aCols * sizeof(float));
+    float *gpu_b_input = cuda_convert(b_input, bRows * bCols * sizeof(float));
 
     float *c_output_gpu = (float*) malloc(aRows * bRows * sizeof(float));
     float *c_output_cpu = (float*) malloc(aRows * bRows * sizeof(float));
+    float *gpu_c_output_gpu = cuda_convert(c_output_gpu, aRows * bRows * sizeof(float));
 
     cudaEvent_t start_cpu, stop_cpu;
     cudaEventCreate(&start_cpu);
@@ -271,12 +301,14 @@ void matMulCublasTest() {
     cudaEventCreate(&stop_gpu);
     cudaEventRecord(start_gpu);
 
-    matMulCUDA(a_input, aRows, aCols, b_input, bRows, bCols, c_output_gpu);
+    matMulCUDA_MTP(gpu_a_input, aRows, aCols, gpu_b_input, bRows, bCols, gpu_c_output_gpu);
 
     cudaEventRecord(stop_gpu);
     cudaEventSynchronize(stop_gpu);
     float gpu_time_milliseconds;
     cudaEventElapsedTime(&gpu_time_milliseconds, start_gpu, stop_gpu);
+
+    cpu_convert(c_output_gpu, gpu_c_output_gpu, aRows * bRows * sizeof(float));
 
     std::cout << std::endl;
     std::cout << "CUBLAS time: " << cpu_time_milliseconds << " milliseconds" << std::endl;
@@ -297,6 +329,9 @@ void matMulCublasTest() {
     free(b_input);
     free(c_output_gpu);
     free(c_output_cpu);
+    cudaFree(gpu_a_input);
+    cudaFree(gpu_b_input);
+    cudaFree(gpu_c_output_gpu);
 }
 
 void sumCPU(float *input, float *output, int rows, int cols) {
@@ -307,18 +342,10 @@ void sumCPU(float *input, float *output, int rows, int cols) {
     broadcast(out, 0);
 }
 
-// void sumGPU(float *input, float *output, int rows, int cols) {
-//     for (size_t i = 0; i < rows * cols; i++) {
-//         output[(i/cols)*cols] += input[i];
-//     }
-//     Matrix out = {.dat = output, .rows = rows, .cols = cols};
-//     broadcastCUDA(out, 0);
-// }
-
 void cudaSumTest() {
     std::cout << "------------------------------------------" << std::endl;
     std::cout << "Test Sum RUNNING." << std::endl;
-    const int rows = 32;
+    const int rows = 3200;
     const int cols = 768;
 
     float *input_cpu = generateRandomMatrix(rows, cols);
@@ -326,14 +353,16 @@ void cudaSumTest() {
 
     float *input_gpu = generateRandomMatrix(rows, cols);
     float *output_gpu = (float *) malloc(sizeof(float) * rows * cols);
+    float *gpu_input_gpu = cuda_convert(input_gpu, rows * cols * sizeof(float));
+    float *gpu_output_gpu = cuda_convert(output_gpu, rows * cols * sizeof(float));
 
     Matrix mat_in;
-    mat_in.dat = input_gpu;
+    mat_in.dat = gpu_input_gpu;
     mat_in.rows = rows;
     mat_in.cols = cols;
 
     Matrix mat_out;
-    mat_out.dat = output_gpu;
+    mat_out.dat = gpu_output_gpu;
     mat_out.rows = rows;
     mat_out.cols = cols;
 
@@ -354,13 +383,15 @@ void cudaSumTest() {
     cudaEventCreate(&stop_gpu);
     cudaEventRecord(start_gpu);
 
-    sumCUDA(mat_in, mat_out);
-    broadcast(mat_out, 0);
+    sumCUDA_MTP(mat_in, mat_out);
+    broadcastCUDA_MTP(mat_out, 0);
 
     cudaEventRecord(stop_gpu);
     cudaEventSynchronize(stop_gpu);
     float gpu_time_milliseconds;
     cudaEventElapsedTime(&gpu_time_milliseconds, start_gpu, stop_gpu);
+
+    cpu_convert(output_gpu, gpu_output_gpu, rows * cols * sizeof(float));
 
     std::cout << std::endl;
     std::cout << "CPU time: " << cpu_time_milliseconds << " milliseconds" << std::endl;
@@ -371,7 +402,7 @@ void cudaSumTest() {
     // printMatrix(output_gpu, rows, cols);
     // printMatrix(output_cpu, rows, cols);
 
-    if (compareMatrices(output_cpu, output_gpu, cols, rows)) {
+    if (compareMatrices(output_cpu, output_gpu, rows, cols)) {
         std::cout << "Test Sum PASSED." << std::endl;
     } else {
         std::cout << "Test Sum FAILED." << std::endl;
@@ -381,6 +412,8 @@ void cudaSumTest() {
     free(output_cpu);
     free(input_gpu);
     free(output_gpu);
+    cudaFree(gpu_input_gpu);
+    cudaFree(gpu_output_gpu);
 }
 
 void transposeCPU(float *input, float *output, int rows, int cols) {
@@ -399,8 +432,10 @@ void cudaTransposeTest() {
     float *h_input = generateRandomMatrix(rows, cols);
     float *h_output_cpu = (float*) malloc(rows * cols  * sizeof(float));
 
+    float *gpu_h_input = cuda_convert(h_input, rows * cols * sizeof(float));
+
     Matrix mat;
-    mat.dat = h_input;
+    mat.dat = gpu_h_input;
     mat.rows = rows;
     mat.cols = cols;
 
@@ -436,8 +471,9 @@ void cudaTransposeTest() {
 
     // printMatrix(h_output_cpu, cols, rows);
     // printMatrix(mat.dat, cols, rows);
+    cpu_convert(h_input, gpu_h_input, rows * cols * sizeof(float));
 
-    if (compareMatrices(mat.dat, h_output_cpu, cols, rows)) {
+    if (compareMatrices(h_input, h_output_cpu, cols, rows)) {
         std::cout << "Test Transpose PASSED." << std::endl;
     } else {
         std::cout << "Test Transpose FAILED." << std::endl;
@@ -445,6 +481,7 @@ void cudaTransposeTest() {
 
     free(h_input);
     free(h_output_cpu);
+    cudaFree(gpu_h_input);
 }
 
 #define UNARYtest(fn)                                                           \
@@ -462,6 +499,9 @@ void cudaTransposeTest() {
         cpu_in.cols = cols;                                                     \
                                                                                 \
         Matrix gpu_in = cloneMatrix(cpu_in);                                    \
+        float *data_cpu = gpu_in.dat;                                           \
+        float *data_gpu = cuda_convert(data_cpu, rows * cols * sizeof(float));  \
+        gpu_in.dat = data_gpu;                                                  \
                                                                                 \
         cudaEvent_t start_cpu, stop_cpu;                                        \
         cudaEventCreate(&start_cpu);                                            \
@@ -480,27 +520,29 @@ void cudaTransposeTest() {
         cudaEventCreate(&stop_gpu);                                             \
         cudaEventRecord(start_gpu);                                             \
                                                                                 \
-        Matrix gpu_out = fn##CUDA(gpu_in, k);                                   \
+        Matrix gpu_out = fn##CUDA_MTP(gpu_in, k);                               \
                                                                                 \
         cudaEventRecord(stop_gpu);                                              \
         cudaEventSynchronize(stop_gpu);                                         \
         float gpu_time_milliseconds;                                            \
         cudaEventElapsedTime(&gpu_time_milliseconds, start_gpu, stop_gpu);      \
                                                                                 \
+        cpu_convert(data_cpu, gpu_out.dat, rows * cols * sizeof(float));        \
         std::cout << std::endl;                                                 \
         std::cout << "CPU time: " << cpu_time_milliseconds << " milliseconds" << std::endl;\
         std::cout << "GPU time: " << gpu_time_milliseconds << " milliseconds" << std::endl;\
         std::cout << std::endl << "Speedup factor: " <<                         \
             cpu_time_milliseconds / gpu_time_milliseconds << std::endl << std::endl;\
                                                                                 \
-        if (compareMatrices(cpu_out.dat, gpu_out.dat, cols, rows)) {            \
+        if (compareMatrices(cpu_out.dat, data_cpu, rows, cols)) {               \
             std::cout << "Test " << #fn << " PASSED." << std::endl;             \
         } else {                                                                \
             std::cout << "Test " << #fn << " FAILED." << std::endl;             \
         }                                                                       \
                                                                                 \
         free(cpu_in.dat);                                                       \
-        free(gpu_in.dat);                                                       \
+        free(data_cpu);                                                         \
+        cudaFree(data_gpu);                                                     \
     }
 
 UNARYtest(divide_const)                     
@@ -531,6 +573,12 @@ UNARYtest(GELU)
                                                                                 \
         Matrix gpu_a = cloneMatrix(cpu_a);                                      \
         Matrix gpu_b = cloneMatrix(cpu_b);                                      \
+        float *a_data_cpu = gpu_a.dat;                                          \
+        float *b_data_cpu = gpu_b.dat;                                          \
+        float *a_data_gpu = cuda_convert(a_data_cpu, rows * cols * sizeof(float));\
+        float *b_data_gpu = cuda_convert(b_data_cpu, rows * cols * sizeof(float));\
+        gpu_a.dat = a_data_gpu;                                                 \
+        gpu_b.dat = b_data_gpu;                                                 \
                                                                                 \
         cudaEvent_t start_cpu, stop_cpu;                                        \
         cudaEventCreate(&start_cpu);                                            \
@@ -549,29 +597,33 @@ UNARYtest(GELU)
         cudaEventCreate(&stop_gpu);                                             \
         cudaEventRecord(start_gpu);                                             \
                                                                                 \
-        Matrix gpu_out = fn##CUDA(gpu_a, gpu_b);                                \
+        Matrix gpu_out = fn##CUDA_MTP(gpu_a, gpu_b);                            \
                                                                                 \
         cudaEventRecord(stop_gpu);                                              \
         cudaEventSynchronize(stop_gpu);                                         \
         float gpu_time_milliseconds;                                            \
         cudaEventElapsedTime(&gpu_time_milliseconds, start_gpu, stop_gpu);      \
                                                                                 \
+        cpu_convert(a_data_cpu, a_data_gpu, rows * cols * sizeof(float));       \
+        cpu_convert(b_data_cpu, b_data_gpu, rows * cols * sizeof(float));       \
         std::cout << std::endl;                                                 \
         std::cout << "CPU time: " << cpu_time_milliseconds << " milliseconds" << std::endl;\
         std::cout << "GPU time: " << gpu_time_milliseconds << " milliseconds" << std::endl;\
         std::cout << std::endl << "Speedup factor: " <<                         \
             cpu_time_milliseconds / gpu_time_milliseconds << std::endl << std::endl;\
                                                                                 \
-        if (compareMatrices(cpu_out.dat, gpu_out.dat, cols, rows)) {            \
+        if (compareMatrices(cpu_out.dat, a_data_cpu, cols, rows)) {             \
             std::cout << "Test " << #fn << " PASSED." << std::endl;             \
         } else {                                                                \
             std::cout << "Test " << #fn << " FAILED." << std::endl;             \
         }                                                                       \
                                                                                 \
         free(cpu_a.dat);                                                        \
-        free(gpu_a.dat);                                                        \
+        free(a_data_cpu);                                                       \
         free(cpu_b.dat);                                                        \
-        free(gpu_b.dat);                                                        \
+        free(b_data_cpu);                                                       \
+        cudaFree(a_data_gpu);                                                   \
+        cudaFree(b_data_gpu);                                                   \
     }
 
 BINARYtest(add)
