@@ -32,7 +32,6 @@ int tmp, zz;
 char* bpe;
 
 void *memory, *memory_top;
-// TODO MERGE TEMP
 void *memory_gpu, *memory_gpu_top;
 FILE* fp;
 
@@ -50,7 +49,6 @@ Matrix NewMatrix(int rows, int cols, int reuse) {
     return out;
 }
 
-//TODO MERGE TEMP
 Matrix NewMatrixGPU(int rows, int cols, int reuse) {
     float* a = memory_gpu;
     memory_gpu += tmp = 4 * rows * cols;
@@ -67,7 +65,6 @@ double get_wall_time() {
     return wall_time;
 }
 
-// TODO MERGE TEMP
 Matrix sum(Matrix d_a) {    
     Matrix d_out = NewMatrixGPU(d_a.rows, d_a.cols, 1);
     sumCUDA(d_a, d_out);
@@ -103,12 +100,11 @@ Matrix slice(Matrix a, int b, int rows, int cols) {
 Matrix LayerNorm(Matrix d_a, int i) {
     size_t size = d_a.rows * d_a.cols * sizeof(float);
     Matrix d_b = addCUDA(d_a, divide_constCUDA(sum(d_a), -d_a.cols));
-    Matrix d_k = divide_constCUDA(sum(multiplyCUDA(addCUDA(NewMatrixGPU(d_b.rows, d_b.cols, 1), d_b), d_b)), d_b.cols - 1);  // todo can remove -1
+    Matrix d_k = divide_constCUDA(sum(multiplyCUDA(addCUDA(NewMatrixGPU(d_b.rows, d_b.cols, 1), d_b), d_b)), d_b.cols - 1);
     Matrix d_out = add_tileCUDA(multiply_tileCUDA(multiplyCUDA(addCUDA(NewMatrixGPU(d_b.rows, d_b.cols, 1), d_b), mat_isqrtCUDA(add_constCUDA(d_k, 1e-5), 0)), layer_weights_GPU[i + 1]), layer_weights_GPU[i]);
     return d_out;
 }
 
-// TODO MERGE TEMP
 #define Linear(a, i) add_tileCUDA(matmul_t_fast(a, layer_weights_GPU[i + 1]), layer_weights_GPU[i])
 
 // Read a weight matrix out of the data file into memory
@@ -190,7 +186,6 @@ void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, 
     cudaMemcpy(d_output, output, 2 * zz * sizeof(int), cudaMemcpyHostToDevice);
 
     while (1) {  // Brian loop
-        // START MERGE HERE -----------------------------------
         // Reset the memory to the top of the original value
         memory = memory_top;
         memory_gpu = memory_gpu_top;
@@ -200,7 +195,6 @@ void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, 
         // If the number is 0 mod 32, then we need to recompute everything bottom up
         token_processed_upto *= !!(num_total_tokens % 32);
 
-        // START MERGE HERE -----------------------------------
         Matrix d_line = NewMatrixGPU(T, DIM, 1);
 
         embeddingsCUDA(d_line, d_wte, d_wpe, d_output, num_total_tokens, DIM);
@@ -336,7 +330,6 @@ int main(int tmp, char** argv) {
     // Allocate space
     zz = atoi(argv[3]);
     memory = malloc(2LL * DIM * DIM * NLAYER * zz); // temp addition
-    // TODO MERGE TEMP
     cudaError_t cudaStatus;
     size_t totalSize = 2LL * DIM * DIM * NLAYER * zz;
     size_t freeMem, totalMem;
@@ -412,7 +405,6 @@ int main(int tmp, char** argv) {
     Matrix wpe = read_matrix(1024, DIM),
     wte = transpose_util(read_matrix(5e4, DIM));
     
-    // TODO MERGE TEMP
     Matrix d_wpe;
     Matrix d_wte;
     cudaMalloc((void**)&d_wpe.dat, wpe.rows * wpe.cols * sizeof(float));

@@ -173,7 +173,7 @@ Matrix slice(Matrix a, int b, int rows, int cols) {
 // Exactly what it does doesn't matter.
 Matrix LayerNorm(Matrix a, int i) {
     Matrix b = add(a, divide_const(sum(a), -a.cols));
-    Matrix k = divide_const(sum(multiply(add(NewMatrix(b.rows, b.cols, 1), b), b)), b.cols - 1);  // todo can remove -1
+    Matrix k = divide_const(sum(multiply(add(NewMatrix(b.rows, b.cols, 1), b), b)), b.cols - 1);
     Matrix out = add_tile(multiply_tile(multiply(add(NewMatrix(b.rows, b.cols, 1), b), mat_isqrt(add_const(k, 1e-5), 0)), layer_weights[i + 1]), layer_weights[i]);
 
     return out;
