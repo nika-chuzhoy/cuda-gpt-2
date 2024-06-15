@@ -29,13 +29,19 @@ The following are the results from running `make test` on the server (name unmen
 <img width="1122" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/8ff27bc2-6a82-4b9c-a3c9-7b349bf2d445">
 <img width="1122" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/075dcc05-1304-4afa-9e4e-4a4738091244">
 <img width="1122" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/dc7ea328-5912-40d0-93b8-a6132697aad9">
-## Timed Complete Demo Comparison Results
+## Live + Timed Complete Demo Comparison Results
+Live Video demonstration using `make cpu_seed` and `make gpu_seed`:
+
 https://github.com/nika-chuzhoy/cuda-gpt-2/assets/47908317/ef9af091-2709-4a53-8d08-b512f576fa82
 
+The video encapsulates the massive speedups we have achieved.
+Results of `make time`:
+<img width="1126" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/be2c1eaa-9c03-4770-b7a5-0d3cb12eba88">
+The image demonstrates a 80x speedup.
 
 
 # Performance Analysis
-The GPU demo located in `optimized_chat_gpt_2.c` is significantly (about 20 times) faster than the CPU demo in `c_chat_gpt_2.c` and gives identical results. But, it can probably be faster! Here is a list of things we tried that we were not able to get working or did not have time to get to or would like to explore with more time:
+The GPU demo located in `optimized_chat_gpt_2.c` is significantly (between 20x and 100x depending on conditions) faster than the CPU demo in `c_chat_gpt_2.c` and gives identical results. Here is a list of things we tried that we were not able to get working or did not have time to get to or would like to explore with more time:
 * Load model directly onto GPU
 * Tokenize text on the GPU
 * We separated each matrix operation into its own kernel for clarity but it was sometimes possible to merge two kernels together which would avoid multiple kernel calls.
