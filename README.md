@@ -37,7 +37,7 @@ https://github.com/nika-chuzhoy/cuda-gpt-2/assets/47908317/ef9af091-2709-4a53-8d
 The video encapsulates the massive speedups we have achieved.
 Results of `make time`:
 <img width="1126" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/be2c1eaa-9c03-4770-b7a5-0d3cb12eba88">
-The image demonstrates a 100x speedup.
+The image demonstrates a 80x speedup.
 
 
 # Performance Analysis
