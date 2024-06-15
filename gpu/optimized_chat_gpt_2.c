@@ -31,8 +31,6 @@ int num_total_tokens;
 int tmp, zz;
 char* bpe;
 
-void *memory, *memory_top;
-// TODO MERGE TEMP
 void *memory_gpu, *memory_gpu_top;
 FILE* fp;
 
@@ -43,8 +41,8 @@ Matrix* layer_weights_GPU;
 
 // A matrix is just a 2d vector of floats with rows and columns.
 Matrix NewMatrix(int rows, int cols, int reuse) {
-    float* a = malloc(rows * cols * sizeof(float));
-    memory += tmp = 4 * rows * cols;
+    tmp = 4 * rows * cols;
+    float *a = malloc(tmp);
     memset(a, 0, tmp * reuse);
     Matrix out = {a, rows, cols};
     return out;
@@ -184,15 +182,12 @@ int* tokenize(char* seq, /*INT*/ int* result) {
 void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, Matrix d_wte, Matrix *weights_gpu, int T, char *buf, int *output, int *d_output){
     start = get_wall_time();
     num_total_tokens = tokenize(buf, output) - output;
-    memory_top = memory;
     memory_gpu_top = memory_gpu;
     token_processed_upto = 0;
     cudaMemcpy(d_output, output, 2 * zz * sizeof(int), cudaMemcpyHostToDevice);
 
     while (1) {  // Brian loop
-        // START MERGE HERE -----------------------------------
         // Reset the memory to the top of the original value
-        memory = memory_top;
         memory_gpu = memory_gpu_top;
 
         // Compute the context window size as the next largest multiple of 32
@@ -335,8 +330,6 @@ int main(int tmp, char** argv) {
 
     // Allocate space
     zz = atoi(argv[3]);
-    memory = malloc(2LL * DIM * DIM * NLAYER * zz); // temp addition
-    // TODO MERGE TEMP
     cudaError_t cudaStatus;
     size_t totalSize = 2LL * DIM * DIM * NLAYER * zz;
     size_t freeMem, totalMem;
