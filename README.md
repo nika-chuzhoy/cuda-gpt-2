@@ -1,4 +1,4 @@
-<img width="1122" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/ccd25ecb-88fa-4983-a3f9-195d531a4f15"># Usage
+# Usage
 ## Setup
 `make download` downloads the `vocab.bpe` file needed for this repo to work as well as the checkpoints for `gpt2-124M`, the smallest GPT-2 checkpoint. 
 ## CPU Demo
