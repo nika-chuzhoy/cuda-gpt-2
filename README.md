@@ -31,8 +31,10 @@ The following are the results from running `make test` on the server (name unmen
 <img width="1122" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/dc7ea328-5912-40d0-93b8-a6132697aad9">
 ## Live + Timed Complete Demo Comparison Results
 Live Video demonstration using `make cpu_seed` and `make gpu_seed`:
+
 https://github.com/nika-chuzhoy/cuda-gpt-2/assets/47908317/ef9af091-2709-4a53-8d08-b512f576fa82
-The video demonstrates the massive speedup.
+
+The video encapsulates the massive speedups we have achieved.
 Results of `make time`:
 <img width="1126" alt="image" src="https://github.com/nika-chuzhoy/cuda-gpt-2/assets/68046621/be2c1eaa-9c03-4770-b7a5-0d3cb12eba88">
 The image demonstrates a speedup over 100x.
