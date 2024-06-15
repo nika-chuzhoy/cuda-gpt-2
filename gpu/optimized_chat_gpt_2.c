@@ -101,8 +101,7 @@ Matrix slice(Matrix a, int b, int rows, int cols) {
     return out;
 }
 
-// TODO MERGE TEMP
-Matrix LayerNorm_MTP(Matrix d_a, int i) {
+Matrix LayerNorm(Matrix d_a, int i) {
     size_t size = d_a.rows * d_a.cols * sizeof(float);
     Matrix d_b = addCUDA(d_a, divide_constCUDA(sum(d_a), -d_a.cols));
     Matrix d_k = divide_constCUDA(sum(multiplyCUDA(addCUDA(NewMatrixGPU(d_b.rows, d_b.cols, 1), d_b), d_b)), d_b.cols - 1);  // todo can remove -1
@@ -111,7 +110,7 @@ Matrix LayerNorm_MTP(Matrix d_a, int i) {
 }
 
 // TODO MERGE TEMP
-#define Linear_MTP(a, i) add_tileCUDA(matmul_t_fast(a, layer_weights_GPU[i + 1]), layer_weights_GPU[i])
+#define Linear(a, i) add_tileCUDA(matmul_t_fast(a, layer_weights_GPU[i + 1]), layer_weights_GPU[i])
 
 // Read a weight matrix out of the data file into memory
 Matrix read_matrix(int rows, int cols) {
@@ -234,7 +233,7 @@ void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, 
 
             // Compute the keys, queries, and values all at once with a big multiply
             
-            Matrix d_qkv = tranpose(slice(Linear_MTP(LayerNorm_MTP(d_line, 4), 0), 0, T * 3, DIM));
+            Matrix d_qkv = tranpose(slice(Linear(LayerNorm(d_line, 4), 0), 0, T * 3, DIM));
 
             // Make space for the output of the computation
             Matrix result = NewMatrixGPU(DIM, T, 1);
@@ -253,16 +252,16 @@ void do_inference(double start, double end, double cpu_time_used, Matrix d_wpe, 
                 }
 
                 // Residual connection
-                d_line = addCUDA(d_line, Linear_MTP(tranpose(result), 2));
+                d_line = addCUDA(d_line, Linear(tranpose(result), 2));
 
                 // Activation function and residual connection
-                d_line = addCUDA(d_line, Linear_MTP(GELUCUDA(Linear_MTP(LayerNorm_MTP(d_line, 6), 8), 0), 10));
+                d_line = addCUDA(d_line, Linear(GELUCUDA(Linear(LayerNorm(d_line, 6), 8), 0), 10));
             }
 
         // Reset layer weights so we can do the last layer norm
         layer_weights = weights;
         layer_weights_GPU = weights_gpu;
-        d_line = LayerNorm_MTP(d_line, 12 * NLAYER);
+        d_line = LayerNorm(d_line, 12 * NLAYER);
 
         // And finally compute the output logits
         token_processed_upto = 0;
