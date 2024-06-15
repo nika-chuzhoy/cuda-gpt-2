@@ -87,32 +87,6 @@ __global__ void matMulCudaKernelOptimized(float* A, float* B, float* C, int aRow
 }
 
 extern "C" void matMulCUDA(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
-    float *d_A, *d_B, *d_C;
-    size_t sizeA = aRows * aCols * sizeof(float);
-    size_t sizeB = bRows * bCols * sizeof(float);
-    size_t sizeC = aRows * bRows * sizeof(float);
-
-    cudaMalloc((void**)&d_A, sizeA);
-    cudaMalloc((void**)&d_B, sizeB);
-    cudaMalloc((void**)&d_C, sizeC);
-
-    cudaMemcpy(d_A, a, sizeA, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, b, sizeB, cudaMemcpyHostToDevice);
-
-    // Cuda Kernel
-    dim3 dimBlock(32, 32);
-    dim3 dimGrid(CEIL_DIV(bRows, 32), CEIL_DIV(aRows, 32));
-
-    matMulCudaKernelOptimized<<<dimGrid, dimBlock>>>(d_A, d_B, d_C, aRows, aCols, bRows);
-
-    cudaMemcpy(out, d_C, sizeC, cudaMemcpyDeviceToHost);
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C);
-}
-
-// TODO MERGE TEMP
-extern "C" void matMulCUDA_MTP(float* a, int aRows, int aCols, float* b, int bRows, int bCols, float* out) {
     // Cuda Kernel
     dim3 dimBlock(32, 32);
     dim3 dimGrid(CEIL_DIV(bRows, 32), CEIL_DIV(aRows, 32));
@@ -185,31 +159,8 @@ __global__ void sumCudaKernel(float* input, float* output, int rows, int cols) {
     }
 }
 
+
 extern "C" void sumCUDA(Matrix a, Matrix out)
-{
-    float *d_input, *d_output;
-    size_t size = a.rows * a.cols * sizeof(float);
-
-    cudaMalloc(&d_input, size);
-    cudaMalloc(&d_output, size);
-
-    cudaMemcpy(d_input, a.dat, size, cudaMemcpyHostToDevice);
-
-    dim3 dimBlock(256, 1);
-    dim3 dimGrid(128, 1);
-
-    int sharedMemSize = dimBlock.x * sizeof(float);
-
-    sumCudaKernel<<<dimGrid, dimBlock, sharedMemSize>>>(d_input, d_output, a.rows, a.cols);
-
-    cudaMemcpy(out.dat, d_output, size, cudaMemcpyDeviceToHost);
-
-    cudaFree(d_input);
-    cudaFree(d_output);
-}
-
-// TODO MERGE TEMP
-extern "C" void sumCUDA_MTP(Matrix a, Matrix out)
 {
     dim3 dimBlock(256, 1);
     dim3 dimGrid(128, 1);
@@ -263,7 +214,7 @@ void transposeKernel(const float *input, float *output, int rows, int cols) {
     }
 }
 
-extern "C" void transposeCUDA(Matrix a, Matrix out)
+extern "C" void transposeCUDA_util(Matrix a, Matrix out)
 {
     float *d_input, *d_output;
     size_t size = a.rows * a.cols * sizeof(float);
@@ -287,7 +238,7 @@ extern "C" void transposeCUDA(Matrix a, Matrix out)
     cudaFree(d_output);
 }
 
-extern "C" void transposeCUDA_MTP(Matrix a, Matrix out)
+extern "C" void transposeCUDA(Matrix a, Matrix out)
 {
     const int TILE_DIM = 64;
     dim3 dimBlock(TILE_DIM, TILE_DIM / 4); // 64x16
@@ -304,7 +255,7 @@ __global__ void embeddingsKernel(Matrix line, Matrix wpe, int *output, int num_t
      }
 }
 
-extern "C" void embeddingsCUDA_MTP(Matrix line, Matrix wte, Matrix wpe, int *output, int num_total_tokens, int DIM) {
+extern "C" void embeddingsCUDA(Matrix line, Matrix wte, Matrix wpe, int *output, int num_total_tokens, int DIM) {
     int threadsPerBlock = 1024;
     int numBlocks = CEIL_DIV(num_total_tokens * DIM, threadsPerBlock);
     embeddingsKernel<<<numBlocks, threadsPerBlock>>>(line, wpe, output, num_total_tokens, DIM, wte);
@@ -364,7 +315,7 @@ void weightedSampleKernel(float *probs, int *output, double rand_val, int length
     *output = tmp;
 }
 
-extern "C" void softmaxSampleCUDA_MTP(Matrix a, int *out) {
+extern "C" void softmaxSampleCUDA(Matrix a, int *out) {
     dim3 dimBlock(256, 1);
     dim3 dimGrid(128, 1);
     int sharedMemSize = dimBlock.x * sizeof(float);
@@ -375,15 +326,15 @@ extern "C" void softmaxSampleCUDA_MTP(Matrix a, int *out) {
     cudaMemset(dev_max_val, -10000, sizeof(float));
     findMaxKernel<<<dimGrid, dimBlock, sharedMemSize>>>(a.dat, dev_max_val, a.cols);
     cudaMemcpy(&max_val, dev_max_val, sizeof(float), cudaMemcpyDeviceToHost);
-    add_constCUDA_MTP(a, -1.0 * max_val);
-    mat_expCUDA_MTP(a, 1);
+    add_constCUDA(a, -1.0 * max_val);
+    mat_expCUDA(a, 1);
     
     float *dev_sum;
     float sum;
     cudaMalloc(&dev_sum, sizeof(float));
     sumCudaKernel<<<dimGrid, dimBlock, dimBlock.x * sizeof(float)>>>(a.dat, dev_sum, a.rows, a.cols);
     cudaMemcpy(&sum, dev_sum, sizeof(float), cudaMemcpyDeviceToHost);
-    divide_constCUDA_MTP(a, sum);
+    divide_constCUDA(a, sum);
     
     int *dev_out;
     cudaMalloc(&dev_out, sizeof(int));
@@ -394,36 +345,6 @@ extern "C" void softmaxSampleCUDA_MTP(Matrix a, int *out) {
    
 //  Matrix fn(Matrix a, float k)
 #define UNARY(fn, opr)                                                 \
-    __global__ void fn##Kernel(float* a, int aRows, int aCols, float* out, float k) { \
-        int row = blockIdx.y * blockDim.y + threadIdx.y;               \
-        int col = blockIdx.x * blockDim.x + threadIdx.x;               \
-        if (row < aRows && col < aCols) {                              \
-            int i = row * aCols + col;                                 \
-            float b = a[i];                                            \
-            b += 0;                                                    \
-            out[i] = opr;                                              \
-        }                                                              \
-    }                                                                  \
-    extern "C" Matrix fn##CUDA(Matrix m, float k) {                    \
-        float* a = m.dat;                                              \
-        int aRows = m.rows;                                            \
-        int aCols = m.cols;                                            \
-        float *d_a;                                                    \
-        size_t sizeA = aRows * aCols * sizeof(float);                  \
-        cudaMalloc((void**)&d_a, sizeA);                               \
-        cudaMemcpy(d_a, a, sizeA, cudaMemcpyHostToDevice);             \
-        dim3 blockSize(32, 32);                                        \
-        dim3 gridSize((aCols + blockSize.x - 1) / blockSize.x,         \
-                      (aRows + blockSize.y - 1) / blockSize.y);        \
-        fn##Kernel<<<gridSize, blockSize>>>(d_a, aRows, aCols, d_a, k);\
-        cudaMemcpy(m.dat, d_a, sizeA, cudaMemcpyDeviceToHost);         \
-        cudaFree(d_a);                                                 \
-        return m;                                                      \
-    }
-
-// TODO MERGE TEMP
-//  Matrix fn(Matrix a, float k)
-#define UNARY_MTP(fn, opr)                                                 \
     __global__ void fn##Kernel_MTP(float* a, int aRows, int aCols, float* out, float k) { \
         int row = blockIdx.y * blockDim.y + threadIdx.y;               \
         int col = blockIdx.x * blockDim.x + threadIdx.x;               \
@@ -434,7 +355,7 @@ extern "C" void softmaxSampleCUDA_MTP(Matrix a, int *out) {
             out[i] = opr;                                              \
         }                                                              \
     }                                                                  \
-    extern "C" Matrix fn##CUDA_MTP(Matrix m, float k) {                \
+    extern "C" Matrix fn##CUDA(Matrix m, float k) {                    \
         float* a = m.dat;                                              \
         int aRows = m.rows;                                            \
         int aCols = m.cols;                                            \
@@ -461,45 +382,21 @@ UNARY(tril, (i / k < i % (int)k) ? 0 : exp(b / 8))
 // GELU is the activation function used for transformers
 UNARY(GELU, b / 2 * (1 + tanh(.7978845 * (b + .044715 * b * b * b))))
 
-
-// TODO MERGE TEMP
-UNARY_MTP(mtptest, b + (0*k))
-UNARY_MTP(divide_const, b / k)                      // divide by a constant
-UNARY_MTP(add_const, b + k)                         // add a constant
-UNARY_MTP(mat_isqrt, 1. / sqrt(b))                  // square root each entry
-UNARY_MTP(mat_exp, exp(b))                          // exponetiate each entry
-UNARY_MTP(broadcast, a[(i / aCols) * aCols])  // copy the first column to every column
-UNARY_MTP(tril, (i / k < i % (int)k) ? 0 : exp(b / 8))
-UNARY_MTP(GELU, b / 2 * (1 + tanh(.7978845 * (b + .044715 * b * b * b))))
-
-#define BINARY(fn, opr)                                                                \
-    __global__ void fn##Kernel(float* a, int aRows, int aCols, float* b, float* out) { \
-        int row = blockIdx.y * blockDim.y + threadIdx.y;                               \
-        int col = blockIdx.x * blockDim.x + threadIdx.x;                               \
-        if (row < aRows && col < aCols) {                                              \
-            int i = row * aCols + col;                                                 \
-            a[i] = a[i] opr b[i];                                                      \
-        }                                                                              \
-    }                                                                                  \
-    extern "C" Matrix fn##CUDA(Matrix a, Matrix b) {                                   \
-        float *c_a = a.dat;                                                            \
-        int aRows = a.rows;                                                            \
-        int aCols = a.cols;                                                            \
-        float *c_b = b.dat;                                                            \
-        float *d_a, *d_b;                                                              \
-        size_t size = aRows * aCols * sizeof(float);                                   \
-        cudaMalloc((void**)&d_a, size);                                                \
-        cudaMemcpy(d_a, c_a, size, cudaMemcpyHostToDevice);                            \
-        cudaMalloc((void**)&d_b, size);                                                \
-        cudaMemcpy(d_b, c_b, size, cudaMemcpyHostToDevice);                            \
-        dim3 blockSize(32, 32);                                                        \
-        dim3 gridSize((aCols + blockSize.x - 1) / blockSize.x,                         \
-                      (aRows + blockSize.y - 1) / blockSize.y);                        \
-        fn##Kernel<<<gridSize, blockSize>>>(d_a, aRows, aCols, d_b, d_a);              \
-        cudaMemcpy(c_a, d_a, size, cudaMemcpyDeviceToHost);                            \
-        cudaFree(d_a);                                                                 \
-        cudaFree(d_b);                                                                 \
-        return a;                                                                      \
+#define BINARY(fn, opr)                                                                    \
+    __global__ void fn##Kernel_MTP(float* a, int aRows, int aCols, float* b, float* out) { \
+        int row = blockIdx.y * blockDim.y + threadIdx.y;                                   \
+        int col = blockIdx.x * blockDim.x + threadIdx.x;                                   \
+        if (row < aRows && col < aCols) {                                                  \
+            int i = row * aCols + col;                                                     \
+            a[i] = a[i] opr b[i];                                                          \
+        }                                                                                  \
+    }                                                                                      \
+    extern "C" Matrix fn##CUDA(Matrix a, Matrix b) {                                       \
+        dim3 blockSize(32, 32);                                                            \
+        dim3 gridSize((a.cols + blockSize.x - 1) / blockSize.x,                            \
+                      (a.rows + blockSize.y - 1) / blockSize.y);                           \
+        fn##Kernel_MTP<<<gridSize, blockSize>>>(a.dat, a.rows, a.cols, b.dat, a.dat);      \
+        return a;                                                                          \
     }
 
 BINARY(add, +)       // add two matrices together
@@ -513,28 +410,3 @@ BINARY(divide, /)    // divide the first matrix by the second
 // drop the actual b.dat[i]
 BINARY(add_tile, +b[i % aCols];(void))
 BINARY(multiply_tile, *b[i % aCols];(void))
-
-// TODO MERGE TEMP
-
-#define BINARY_MTP(fn, opr)                                                                \
-    __global__ void fn##Kernel_MTP(float* a, int aRows, int aCols, float* b, float* out) { \
-        int row = blockIdx.y * blockDim.y + threadIdx.y;                                   \
-        int col = blockIdx.x * blockDim.x + threadIdx.x;                                   \
-        if (row < aRows && col < aCols) {                                                  \
-            int i = row * aCols + col;                                                     \
-            a[i] = a[i] opr b[i];                                                          \
-        }                                                                                  \
-    }                                                                                      \
-    extern "C" Matrix fn##CUDA_MTP(Matrix a, Matrix b) {                                   \
-        dim3 blockSize(32, 32);                                                            \
-        dim3 gridSize((a.cols + blockSize.x - 1) / blockSize.x,                            \
-                      (a.rows + blockSize.y - 1) / blockSize.y);                           \
-        fn##Kernel_MTP<<<gridSize, blockSize>>>(a.dat, a.rows, a.cols, b.dat, a.dat);      \
-        return a;                                                                          \
-    }
-
-BINARY_MTP(add, +)       // add two matrices together
-BINARY_MTP(multiply, *)  // multiply two matrices together
-BINARY_MTP(divide, /)    // divide the first matrix by the second
-BINARY_MTP(add_tile, +b[i % aCols];(void))
-BINARY_MTP(multiply_tile, *b[i % aCols];(void))
