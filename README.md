@@ -30,6 +30,9 @@ The following are the results from running `make test` on the server (name unmen
 ## Timed Complete Demo Comparison Results
 TBD
 
+# Performance Analysis
+The GPU demo located in `optimized_chat_gpt_2.c` is significantly faster than the CPU demo in `c_chat_gpt_2.c` and achieves equivalent performance. Here is a list of things we tried that we were not able to get working or did not have time to get to or would like to explore with more time:
+
 # Credit
 
 This code is modified from [c-chat-gpt-2](https://github.com/carlini/c-chat-gpt-2/tree/main) by [Nicholas Carlini](https://nicholas.carlini.com/).
